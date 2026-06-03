@@ -1,0 +1,66 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&family=Syne:wght@400..800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-navy-primary text-text-primary font-sans antialiased selection:bg-primary selection:text-white;
+    background-color: #0A0F1E;
+    min-height: 100vh;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display tracking-tight;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0A0F1E;
+}
+::-webkit-scrollbar-thumb {
+  background: #1F2937;
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #F97316;
+}
+
+.glass-effect {
+  @apply bg-navy-card/85 backdrop-blur-md border border-navy-border/60;
+}
+
+.floating-label-group {
+  @apply relative;
+}
+
+.floating-label-group input:focus ~ label,
+.floating-label-group input:not(:placeholder-shown) ~ label {
+  @apply -translate-y-4 scale-90 text-primary px-1 bg-navy-card;
+}
+
+.floating-label-group label {
+  @apply absolute left-3 top-2.5 text-text-secondary text-xs pointer-events-none transition-all duration-200 origin-left;
+}
+
+.floating-label-group select:focus ~ label,
+.floating-label-group select:not([value=""]) ~ label {
+  @apply -translate-y-4 scale-90 text-primary px-1 bg-navy-card;
+}
+
+/* Confetti Sparkles */
+@keyframes pop-sparkle {
+  0% { transform: scale(0) rotate(0deg); opacity: 0; }
+  50% { opacity: 1; }
+  100% { transform: scale(1) rotate(180deg); opacity: 0; }
+}
+
+.animate-pop-sparkle {
+  animation: pop-sparkle 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
