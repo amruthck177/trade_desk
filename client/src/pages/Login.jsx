@@ -3,12 +3,23 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { useAuthStore } from '../store/authStore';
 import axios from 'axios';
-import { Sparkles, Eye, EyeOff, Lock, Mail, Loader2 } from 'lucide-react';
+import { 
+  Sparkles, 
+  Eye, 
+  EyeOff, 
+  Lock, 
+  Mail, 
+  Loader2, 
+  ArrowRight, 
+  ShieldCheck, 
+  Zap 
+} from 'lucide-react';
 
 export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [apiError, setApiError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
   const navigate = useNavigate();
   const login = useAuthStore((state) => state.login);
 
@@ -19,7 +30,7 @@ export default function Login() {
     setLoading(true);
     try {
       const response = await axios.post('/api/auth/login', {
-        email: data.email,
+        email: data.email.trim(),
         password: data.password,
       });
 
@@ -28,104 +39,189 @@ export default function Login() {
         navigate('/dashboard');
       }
     } catch (err) {
-      console.error(err);
-      setApiError(err.response?.data?.message || 'Login failed. Please verify credentials.');
+      console.error('Login error:', err);
+      setApiError(err.response?.data?.message || 'Login failed. Please verify your email and password.');
     } finally {
       setLoading(false);
     }
   };
 
-  return (
-    <div className="min-h-screen bg-navy-primary text-text-primary flex items-center justify-center p-6 relative">
-      {/* Glow blobs */}
-      <div className="absolute top-[10%] left-[20%] w-[300px] h-[300px] rounded-full bg-primary/5 blur-[100px] pointer-events-none" />
-      <div className="absolute bottom-[10%] right-[20%] w-[350px] h-[350px] rounded-full bg-secondary/5 blur-[120px] pointer-events-none" />
+  // Quick 1-Click Demo Login
+  const handleQuickDemoLogin = async () => {
+    setApiError('');
+    setDemoLoading(true);
+    try {
+      const demoEmail = 'pro_demo@tradedesk.in';
+      const demoPass = 'demo123456';
+      
+      try {
+        const loginRes = await axios.post('/api/auth/login', {
+          email: demoEmail,
+          password: demoPass,
+        });
+        login(loginRes.data);
+        navigate('/dashboard');
+      } catch (loginErr) {
+        const regRes = await axios.post('/api/auth/register', {
+          name: 'Ramesh Electrician',
+          email: demoEmail,
+          password: demoPass,
+          phone: '9876543210',
+          businessName: 'Ramesh Electrical & AC Services',
+          upiId: 'ramesh@okhdfcbank',
+          gstNumber: '29ABCDE1234F1Z5'
+        });
+        login(regRes.data);
+        navigate('/dashboard');
+      }
+    } catch (err) {
+      console.error('Demo login error:', err);
+      setApiError('Could not start instant demo. Please register a free account.');
+    } finally {
+      setDemoLoading(false);
+    }
+  };
 
-      {/* Main card */}
-      <div className="w-full max-w-md bg-navy-card border border-navy-border/60 p-8 rounded-card shadow-elevated relative z-10">
+  return (
+    <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-4 sm:p-6 relative overflow-hidden font-sans selection:bg-primary selection:text-white">
+      
+      {/* Background Ambient Glow Orbs */}
+      <div className="absolute top-[10%] left-[20%] w-[450px] h-[450px] rounded-full bg-orange-500/10 blur-[140px] pointer-events-none -z-10 animate-pulse-slow" />
+      <div className="absolute bottom-[10%] right-[20%] w-[500px] h-[500px] rounded-full bg-cyan-500/10 blur-[160px] pointer-events-none -z-10" />
+
+      {/* Main Card */}
+      <div className="w-full max-w-md bg-[#121B30] p-6 sm:p-8 rounded-2xl relative z-10 shadow-2xl border border-slate-700 flex flex-col gap-6">
         
-        {/* Brand Logo Header */}
-        <div className="flex flex-col items-center gap-3 mb-8">
-          <Link to="/" className="w-10 h-10 bg-primary/10 border border-primary/20 rounded-xl flex items-center justify-center text-primary hover:scale-105 active:scale-95 transition-all">
-            <Sparkles className="w-5.5 h-5.5 fill-current animate-pulse-slow" />
+        {/* Brand Logo & Header */}
+        <div className="flex flex-col items-center text-center gap-2">
+          <Link to="/" className="flex items-center gap-2 group mb-1">
+            <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-amber-500 rounded-xl flex items-center justify-center text-white font-black shadow-lg group-hover:scale-105 transition-all">
+              <Sparkles className="w-5 h-5 fill-current" />
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="font-display font-black text-2xl tracking-tight text-white">TradeDesk</span>
+              <span className="px-1.5 py-0.2 bg-orange-500/20 border border-orange-500/40 text-orange-400 font-mono text-[10px] font-extrabold rounded">AI</span>
+            </div>
           </Link>
-          <div className="text-center">
-            <h2 className="text-2xl font-display font-extrabold text-text-primary">Welcome Back</h2>
-            <p className="text-xs text-text-secondary mt-1">Log in to manage your jobs and send invoices</p>
-          </div>
+          <h2 className="text-xl font-display font-extrabold text-white">Technician Portal Login</h2>
+          <p className="text-xs text-slate-300">Sign in to manage voice invoices, payments, and clients</p>
+        </div>
+
+        {/* Tab Switcher */}
+        <div className="flex bg-[#1A2642] p-1 rounded-xl border border-slate-700">
+          <button
+            type="button"
+            className="flex-1 py-2 text-xs font-bold rounded-lg bg-orange-500 text-white shadow-sm transition-all"
+          >
+            Sign In
+          </button>
+          <Link
+            to="/register"
+            className="flex-1 py-2 text-xs font-bold rounded-lg text-slate-300 hover:text-white text-center transition-all"
+          >
+            Create Account
+          </Link>
         </div>
 
         {apiError && (
-          <div className="bg-danger/10 border border-danger/25 text-danger text-xs font-semibold p-3.5 rounded-xl mb-6 flex items-center gap-2 animate-shake">
+          <div className="bg-red-500/15 border border-red-500/40 text-red-300 text-xs font-semibold p-3 rounded-xl flex items-center gap-2 text-left">
             ⚠️ <span>{apiError}</span>
           </div>
         )}
 
-        {/* Form */}
-        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-5">
+        {/* Structured Login Form */}
+        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4 text-left">
+          
           {/* Email field */}
-          <div className="floating-label-group">
-            <input
-              type="email"
-              id="email"
-              placeholder=" "
-              {...register('email', { required: 'Email address is required' })}
-              className={`w-full bg-navy-elevated/40 border ${errors.email ? 'border-danger focus:border-danger' : 'border-navy-border/80 focus:border-primary'} outline-none rounded-input px-3.5 py-2.5 text-sm transition-all placeholder-shown:border-navy-border/50`}
-            />
-            <label htmlFor="email" className="flex items-center gap-1">
-              <Mail className="w-3.5 h-3.5" /> Email Address
-            </label>
-            {errors.email && <span className="text-[10px] text-danger mt-1 font-semibold">{errors.email.message}</span>}
+          <div>
+            <label className="text-xs font-bold text-slate-200 block mb-1">Registered Email Address *</label>
+            <div className="relative flex items-center">
+              <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
+              <input
+                type="email"
+                required
+                placeholder="name@example.com"
+                {...register('email', { required: 'Email is required' })}
+                className="w-full pl-10 pr-3.5 py-2.5 bg-[#1A2642] border border-slate-600 focus:border-orange-500 rounded-xl text-xs text-white focus:outline-none transition-all placeholder:text-slate-400 font-medium"
+              />
+            </div>
+            {errors.email && <span className="text-[10px] text-red-400 mt-1 font-semibold block">{errors.email.message}</span>}
           </div>
 
           {/* Password field */}
-          <div className="floating-label-group relative">
-            <input
-              type={showPassword ? 'text' : 'password'}
-              id="password"
-              placeholder=" "
-              {...register('password', { required: 'Password is required' })}
-              className={`w-full bg-navy-elevated/40 border ${errors.password ? 'border-danger focus:border-danger' : 'border-navy-border/80 focus:border-primary'} outline-none rounded-input pl-3.5 pr-10 py-2.5 text-sm transition-all`}
-            />
-            <label htmlFor="password" className="flex items-center gap-1">
-              <Lock className="w-3.5 h-3.5" /> Password
-            </label>
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3.5 top-3.5 text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
-            >
-              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </button>
-            {errors.password && <span className="text-[10px] text-danger mt-1 font-semibold">{errors.password.message}</span>}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-bold text-slate-200">Password *</label>
+              <span className="text-[10px] text-orange-400 cursor-pointer hover:underline font-semibold">Forgot password?</span>
+            </div>
+            <div className="relative flex items-center">
+              <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
+              <input
+                type={showPassword ? 'text' : 'password'}
+                required
+                placeholder="••••••••"
+                {...register('password', { required: 'Password is required' })}
+                className="w-full pl-10 pr-10 py-2.5 bg-[#1A2642] border border-slate-600 focus:border-orange-500 rounded-xl text-xs text-white focus:outline-none transition-all placeholder:text-slate-400 font-mono"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 text-slate-400 hover:text-white transition-colors cursor-pointer"
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            {errors.password && <span className="text-[10px] text-red-400 mt-1 font-semibold block">{errors.password.message}</span>}
           </div>
 
-          {/* Submit */}
+          {/* Submit Button */}
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-primary hover:bg-primary-hover disabled:bg-primary/50 text-white font-bold py-3 rounded-button shadow-card-glow shadow-primary/10 hover:scale-102 active:scale-98 transition-all flex items-center justify-center gap-2 mt-2 cursor-pointer"
+            className="w-full mt-2 py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl text-xs font-black flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
           >
             {loading ? (
               <>
-                <Loader2 className="w-4.5 h-4.5 animate-spin text-white" />
-                <span>Logging in...</span>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Signing into Workspace...</span>
               </>
             ) : (
-              <span>Login</span>
+              <>
+                <span>Sign In to TradeDesk</span>
+                <ArrowRight className="w-4 h-4" />
+              </>
             )}
           </button>
         </form>
 
-        {/* Footer */}
-        <div className="text-center text-xs text-text-secondary mt-8 border-t border-navy-border/40 pt-5">
-          <span>Don't have an account? </span>
-          <Link to="/register" className="text-primary font-bold hover:underline">
-            Register Free
-          </Link>
+        {/* Divider */}
+        <div className="flex items-center gap-3 my-0.5">
+          <div className="flex-1 h-px bg-slate-700" />
+          <span className="text-[10px] text-slate-400 font-mono uppercase tracking-wider">Or Fast Test</span>
+          <div className="flex-1 h-px bg-slate-700" />
+        </div>
+
+        {/* 1-Click Instant Demo Login */}
+        <button
+          type="button"
+          onClick={handleQuickDemoLogin}
+          disabled={demoLoading}
+          className="w-full py-2.5 bg-[#1A2642] hover:bg-slate-700 border border-slate-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+        >
+          {demoLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5 text-orange-400" />}
+          <span>⚡ Launch Instant Demo Account</span>
+        </button>
+
+        {/* Footer & Security Trust Seal */}
+        <div className="pt-3 border-t border-slate-700 flex items-center justify-between text-[10px] text-slate-400">
+          <span className="flex items-center gap-1">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> 256-Bit SSL Encrypted
+          </span>
+          <span className="font-semibold text-slate-300">Made for Bharat 🇮🇳</span>
         </div>
 
       </div>
+
     </div>
   );
 }

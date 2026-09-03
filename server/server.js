@@ -11,6 +11,8 @@ import voiceRoutes from './routes/voiceRoutes.js';
 import jobRoutes from './routes/jobRoutes.js';
 import invoiceRoutes from './routes/invoiceRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
+import customerRoutes from './routes/customerRoutes.js';
+import rateCardRoutes from './routes/rateCardRoutes.js';
 
 dotenv.config();
 
@@ -18,8 +20,8 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '15mb' }));
+app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 app.use(cors({
   origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
   credentials: true
@@ -35,6 +37,8 @@ app.use('/api/voice', voiceRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/customers', customerRoutes);
+app.use('/api/rate-cards', rateCardRoutes);
 
 // Health check endpoint
 app.get('/', (req, res) => {

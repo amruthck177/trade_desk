@@ -13,6 +13,8 @@ import Dashboard from './pages/Dashboard';
 import NewJob from './pages/NewJob';
 import InvoicePreview from './pages/InvoicePreview';
 import JobList from './pages/JobList';
+import Customers from './pages/Customers';
+import RateCards from './pages/RateCards';
 import Settings from './pages/Settings';
 
 // Protect Route wrapper
@@ -60,6 +62,26 @@ export default function App() {
             <ProtectedRoute>
               <Layout>
                 <JobList />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/customers"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <Customers />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/catalog"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RateCards />
               </Layout>
             </ProtectedRoute>
           }

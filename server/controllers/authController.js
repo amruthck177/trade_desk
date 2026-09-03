@@ -10,15 +10,15 @@ const generateToken = (id) => {
 
 export const registerUser = async (req, res) => {
   try {
-    const { name, email, password, phone } = req.body;
+    const { name, email, password, phone, businessName, upiId, gstNumber } = req.body;
 
     if (!name || !email || !password || !phone) {
-      return res.status(400).json({ message: 'Please enter all fields' });
+      return res.status(400).json({ message: 'Please enter all required fields (Name, Email, Password, Phone)' });
     }
 
     const userExists = await User.findOne({ email });
     if (userExists) {
-      return res.status(400).json({ message: 'User already exists' });
+      return res.status(400).json({ message: 'An account with this email already exists' });
     }
 
     // Hash password
@@ -30,6 +30,9 @@ export const registerUser = async (req, res) => {
       email,
       password: hashedPassword,
       phone,
+      businessName: businessName || `${name.split(' ')[0]}'s Technical Services`,
+      upiId: upiId || '',
+      gstNumber: gstNumber || '',
     });
 
     if (user) {
@@ -38,6 +41,11 @@ export const registerUser = async (req, res) => {
         name: user.name,
         email: user.email,
         phone: user.phone,
+        businessName: user.businessName,
+        gstNumber: user.gstNumber,
+        upiId: user.upiId,
+        logoUrl: user.logoUrl || '',
+        invoicePrefix: user.invoicePrefix || 'INV',
         token: generateToken(user._id),
       });
     } else {
@@ -55,12 +63,12 @@ export const loginUser = async (req, res) => {
 
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(400).json({ message: 'Invalid credentials' });
+      return res.status(400).json({ message: 'Invalid email or password' });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res.status(400).json({ message: 'Invalid credentials' });
+      return res.status(400).json({ message: 'Invalid email or password' });
     }
 
     res.json({
@@ -107,9 +115,11 @@ export const updateUserProfile = async (req, res) => {
     user.gstNumber = req.body.gstNumber !== undefined ? req.body.gstNumber : user.gstNumber;
     user.upiId = req.body.upiId !== undefined ? req.body.upiId : user.upiId;
     user.invoicePrefix = req.body.invoicePrefix !== undefined ? req.body.invoicePrefix : user.invoicePrefix;
+    if (req.body.businessAddress !== undefined) user.businessAddress = req.body.businessAddress;
+    if (req.body.defaultTerms !== undefined) user.defaultTerms = req.body.defaultTerms;
 
     if (req.file) {
-      user.logoUrl = req.file.path.replace(/\\/g, '/'); // standardise paths for browser downloads
+      user.logoUrl = req.file.path.replace(/\\/g, '/');
     }
 
     if (req.body.password) {
@@ -128,6 +138,8 @@ export const updateUserProfile = async (req, res) => {
       upiId: updatedUser.upiId,
       logoUrl: updatedUser.logoUrl,
       invoicePrefix: updatedUser.invoicePrefix,
+      businessAddress: updatedUser.businessAddress,
+      defaultTerms: updatedUser.defaultTerms,
     });
   } catch (error) {
     console.error('Update Profile Error:', error.message);

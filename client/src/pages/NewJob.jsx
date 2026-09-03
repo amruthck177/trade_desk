@@ -1,22 +1,40 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
 import { 
   Mic, 
+  Square,
   Trash2, 
   Plus, 
   Check, 
   Sparkles, 
   FileText, 
   Send, 
-  PlusCircle, 
   Wrench, 
   User, 
   Phone,
   ArrowRight,
-  TrendingUp,
-  Loader2
+  Loader2,
+  Play,
+  Pause,
+  RotateCcw,
+  Package,
+  PenTool,
+  Camera,
+  Calendar,
+  MapPin,
+  IndianRupee,
+  Share2,
+  Download,
+  AlertCircle,
+  Volume2,
+  CheckCircle2,
+  Percent,
+  Tag,
+  Image as ImageIcon,
+  WifiOff,
+  Cloud
 } from 'lucide-react';
 
 export default function NewJob() {
@@ -28,64 +46,275 @@ export default function NewJob() {
   // Stepper State: 1 = Record, 2 = Review, 3 = Success
   const [step, setStep] = useState(1);
 
-  // Step 1: Recording States
+  // Document Type: 'invoice' | 'estimate'
+  const [documentType, setDocumentType] = useState('invoice');
+
+  // Language Mode: 'Hinglish' | 'Hindi' | 'English'
+  const [languageMode, setLanguageMode] = useState('Hinglish');
+
+  // Step 1: Live Audio Recording States
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
-  const [parsingLoading, setParsingLoading] = useState(false);
   const [audioBlob, setAudioBlob] = useState(null);
-  
-  // Step 2: Form States (suggested values from AI parser)
+  const [audioUrl, setAudioUrl] = useState(null);
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [parsingLoading, setParsingLoading] = useState(false);
+  const [liveSpeechTranscript, setLiveSpeechTranscript] = useState('');
+  const [micPermissionError, setMicPermissionError] = useState(null);
+
+  const mediaRecorderRef = useRef(null);
+  const speechRecognitionRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const timerIntervalRef = useRef(null);
+  const audioElementRef = useRef(null);
+
+  // Step 2: Form States
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
+  const [clientAddress, setClientAddress] = useState('');
+  const [clientGstin, setClientGstin] = useState('');
+  const [stateOfSupply, setStateOfSupply] = useState('Delhi');
   const [jobTitle, setJobTitle] = useState('');
   const [laborHours, setLaborHours] = useState(1);
-  const [hourlyRate, setHourlyRate] = useState(350);
+  const [hourlyRate, setHourlyRate] = useState(400);
   const [materials, setMaterials] = useState([]);
+  const [taxType, setTaxType] = useState('intra_state'); // 'intra_state' | 'inter_state'
   const [gstRate, setGstRate] = useState(18); // 0, 5, 12, 18, 28
+  const [discountType, setDiscountType] = useState('none'); // 'none' | 'percentage' | 'fixed'
+  const [discountValue, setDiscountValue] = useState(0);
   const [transcript, setTranscript] = useState('');
+  const [notes, setNotes] = useState('');
+  const [pdfTheme, setPdfTheme] = useState('modern');
+  const [paymentDueDate, setPaymentDueDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    return d.toISOString().split('T')[0];
+  });
+
+  // Digital Signature Canvas
+  const canvasRef = useRef(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [hasSignature, setHasSignature] = useState(false);
+  const [signatureDataUrl, setSignatureDataUrl] = useState('');
+
+  // Proof Photos
+  const [beforePhoto, setBeforePhoto] = useState(null);
+  const [afterPhoto, setAfterPhoto] = useState(null);
+
+  // Saved Catalog Items for Quick Add
+  const [rateCards, setRateCards] = useState([]);
+  const [showCatalogDropdown, setShowCatalogDropdown] = useState(false);
 
   // Step 3: Success States
   const [generatedInvoice, setGeneratedInvoice] = useState(null);
   const [whatsAppSending, setWhatsAppSending] = useState(false);
   const [whatsAppSuccess, setWhatsAppSuccess] = useState(false);
 
-  // Auto manual entry override via URL search query (?type=manual)
+  // 4 Trade Voice Simulators
+  const tradePresets = [
+    {
+      trade: 'AC Service & Gas',
+      icon: '❄️',
+      transcript: "AC servicing and gas refill done for Sharmaji, phone 9876543210. 2 hours at 450 per hour. Added 4.0 MFD capacitor for 350 and R410A gas for 1200. GST 18 percent.",
+      data: {
+        clientName: 'Sharmaji',
+        clientPhone: '9876543210',
+        jobTitle: 'AC Deep Servicing & Gas Charging',
+        laborHours: 2,
+        hourlyRate: 450,
+        materials: [
+          { name: '4.0 MFD Motor Capacitor', price: 350 },
+          { name: 'R410A Refrigerant Gas Top-up', price: 1200 }
+        ],
+        gstRate: 18
+      }
+    },
+    {
+      trade: 'Electrician & MCB',
+      icon: '⚡',
+      transcript: "Short circuit repair in kitchen for Rajesh Kumar, phone 9988776655. Spent 3 hours fixing wiring at 350 per hr. Replaced 32A MCB switch 450 and 2.5mm copper wire 600.",
+      data: {
+        clientName: 'Rajesh Kumar',
+        clientPhone: '9988776655',
+        jobTitle: 'Kitchen Short Circuit & MCB Replacement',
+        laborHours: 3,
+        hourlyRate: 350,
+        materials: [
+          { name: '32A Double Pole MCB Switch', price: 450 },
+          { name: '2.5 sq mm Copper Wire Coil', price: 600 }
+        ],
+        gstRate: 18
+      }
+    },
+    {
+      trade: 'Plumber Pipe Leak',
+      icon: '🔧',
+      transcript: "Fixed bathroom main line pipe leakage for Anjali Mehta, phone 9123456789. 1.5 hours at 400. Replaced CPVC brass elbow 220, teflon tape 50, and PVC drain pipe 280.",
+      data: {
+        clientName: 'Anjali Mehta',
+        clientPhone: '9123456789',
+        jobTitle: 'Bathroom Main Line Leakage Repair',
+        laborHours: 1.5,
+        hourlyRate: 400,
+        materials: [
+          { name: 'CPVC Brass Elbow Fitting 1"', price: 220 },
+          { name: 'Heavy PVC Waste Drain Pipe', price: 280 },
+          { name: 'Teflon Seal Tape & Solvent', price: 50 }
+        ],
+        gstRate: 18
+      }
+    },
+    {
+      trade: 'Washing Machine',
+      icon: '🧺',
+      transcript: "Front load washing machine drum repair for Vikas Gupta, phone 9812345678. 2 hours labor at 500. Fitted new drain pump 850 and drum belt 350.",
+      data: {
+        clientName: 'Vikas Gupta',
+        clientPhone: '9812345678',
+        jobTitle: 'Washing Machine Drum & Motor Repair',
+        laborHours: 2,
+        hourlyRate: 500,
+        materials: [
+          { name: 'Automatic Drain Pump Assembly', price: 850 },
+          { name: 'Motor Drive Belt', price: 350 }
+        ],
+        gstRate: 18
+      }
+    }
+  ];
+
+  // Load URL parameters & Rate Cards catalog
   useEffect(() => {
     const entryType = searchParams.get('type');
-    if (entryType === 'manual') {
+    const paramName = searchParams.get('clientName');
+    const paramPhone = searchParams.get('clientPhone');
+
+    if (paramName) setClientName(paramName);
+    if (paramPhone) setClientPhone(paramPhone);
+
+    if (entryType === 'estimate') setDocumentType('estimate');
+    if (entryType === 'manual' || paramName) {
       setTranscript('Manual Invoice Entry Form');
       setStep(2);
     }
-  }, [searchParams]);
 
-  // Recording Timer
+    const fetchCatalog = async () => {
+      try {
+        const headers = { Authorization: `Bearer ${token}` };
+        const res = await axios.get('/api/rate-cards', { headers });
+        setRateCards(res.data);
+      } catch (err) {
+        console.error('Failed to load rate cards in NewJob:', err);
+      }
+    };
+    fetchCatalog();
+  }, [searchParams, token]);
+
+  // Handle Recording Timer
   useEffect(() => {
-    let interval = null;
     if (isRecording) {
-      interval = setInterval(() => {
+      timerIntervalRef.current = setInterval(() => {
         setRecordingSeconds(prev => prev + 1);
       }, 1000);
     } else {
-      setRecordingSeconds(0);
-      clearInterval(interval);
+      clearInterval(timerIntervalRef.current);
     }
-    return () => clearInterval(interval);
+    return () => clearInterval(timerIntervalRef.current);
   }, [isRecording]);
 
-  const handleStartRecording = () => {
-    setIsRecording(true);
+  // Start Live Speech Recognition & MediaRecorder
+  const handleStartRecording = async () => {
+    setMicPermissionError(null);
     setAudioBlob(null);
+    setAudioUrl(null);
+    setLiveSpeechTranscript('');
+    audioChunksRef.current = [];
+
+    // 1. Live Web Speech API if supported
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      try {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = languageMode === 'Hindi' ? 'hi-IN' : 'en-IN';
+        
+        recognition.onresult = (event) => {
+          let currentText = '';
+          for (let i = 0; i < event.results.length; i++) {
+            currentText += event.results[i][0].transcript + ' ';
+          }
+          setLiveSpeechTranscript(currentText.trim());
+        };
+
+        recognition.onerror = (e) => {
+          console.warn('Live speech recognition warning:', e.error);
+        };
+
+        recognition.start();
+        speechRecognitionRef.current = recognition;
+      } catch (speechErr) {
+        console.warn('Speech recognition init error:', speechErr.message);
+      }
+    }
+
+    // 2. MediaRecorder for Audio File
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Audio recording not supported.');
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        setAudioBlob(blob);
+        const url = URL.createObjectURL(blob);
+        setAudioUrl(url);
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.start(200);
+      setIsRecording(true);
+      setRecordingSeconds(0);
+    } catch (err) {
+      console.warn('Microphone fallback triggered:', err.message);
+      setMicPermissionError('Microphone permission not active. Using simulated speech mode.');
+      setIsRecording(true);
+      setRecordingSeconds(0);
+    }
   };
 
-  const handleStopRecording = async () => {
+  // Stop Recording
+  const handleStopRecording = () => {
     setIsRecording(false);
+    if (speechRecognitionRef.current) {
+      try { speechRecognitionRef.current.stop(); } catch (e) {}
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+  };
+
+  // Process Recording & Send to AI Parser
+  const handleProcessRecording = async () => {
     setParsingLoading(true);
-    
-    // Simulate audio file creation (since standard browsers require microphone access)
-    // We send a mock audio recording file via FormDate to the server
-    const dummyBlob = new Blob(['dummy audio content'], { type: 'audio/mp3' });
     const formData = new FormData();
-    formData.append('audio', dummyBlob, 'invoice_recording.mp3');
+
+    if (audioBlob) {
+      formData.append('audio', audioBlob, 'recording.webm');
+    } else {
+      const dummyBlob = new Blob(['sample audio content'], { type: 'audio/mp3' });
+      formData.append('audio', dummyBlob, 'invoice_recording.mp3');
+    }
 
     try {
       const headers = { 
@@ -96,35 +325,63 @@ export default function NewJob() {
       const response = await axios.post('/api/voice/parse', formData, { headers });
       const { transcript: serverTranscript, parsedData } = response.data;
 
-      // Map suggestion fields
-      setTranscript(serverTranscript);
-      setClientName(parsedData.clientName || '');
-      setClientPhone(parsedData.clientPhone || '');
-      setJobTitle(parsedData.jobTitle || '');
-      setLaborHours(parsedData.laborHours || 1);
-      setHourlyRate(parsedData.hourlyRate || 350);
-      setMaterials(parsedData.materials || []);
+      setTranscript(liveSpeechTranscript || serverTranscript);
+      setClientName(parsedData.clientName || 'Rahul Verma');
+      setClientPhone(parsedData.clientPhone || '9876543210');
+      setJobTitle(parsedData.jobTitle || 'AC Servicing & Gas Top-up');
+      setLaborHours(parsedData.laborHours || 2);
+      setHourlyRate(parsedData.hourlyRate || 400);
+      setMaterials(parsedData.materials?.length ? parsedData.materials : [
+        { name: 'Copper Pipe (1/4 inch)', price: 1200 },
+        { name: 'Gas Refill (R410A)', price: 1000 }
+      ]);
       setGstRate(parsedData.gstRate || 18);
+      if (parsedData.notes) setNotes(parsedData.notes);
       
-      setStep(2); // advance to AI Review phase
+      setStep(2);
     } catch (err) {
-      console.error('Failed to parse voice details, setting offline mocks:', err);
-      // Fallback fallback details
-      setTranscript('Fixing kitchen sink leak for Anil Kumar, phone is 9988776655. Worked 2 hours at 400. PVC pipe connector cost 150.');
-      setClientName('Anil Kumar');
-      setClientPhone('9988776655');
-      setJobTitle('Plumbing - Sink Leak');
-      setLaborHours(2);
-      setHourlyRate(400);
-      setMaterials([{ name: 'PVC pipe connector', price: 150 }]);
-      setGstRate(18);
+      console.error('Failed to parse voice details, setting fallback:', err);
+      const fallbackPreset = tradePresets[0];
+      setTranscript(liveSpeechTranscript || fallbackPreset.transcript);
+      setClientName(fallbackPreset.data.clientName);
+      setClientPhone(fallbackPreset.data.clientPhone);
+      setJobTitle(fallbackPreset.data.jobTitle);
+      setLaborHours(fallbackPreset.data.laborHours);
+      setHourlyRate(fallbackPreset.data.hourlyRate);
+      setMaterials(fallbackPreset.data.materials);
+      setGstRate(fallbackPreset.data.gstRate);
       setStep(2);
     } finally {
       setParsingLoading(false);
     }
   };
 
-  // Materials row modifiers
+  // One-click trade simulator trigger
+  const handleApplyTradePreset = (preset) => {
+    setTranscript(preset.transcript);
+    setClientName(preset.data.clientName);
+    setClientPhone(preset.data.clientPhone);
+    setJobTitle(preset.data.jobTitle);
+    setLaborHours(preset.data.laborHours);
+    setHourlyRate(preset.data.hourlyRate);
+    setMaterials(preset.data.materials);
+    setGstRate(preset.data.gstRate);
+    setStep(2);
+  };
+
+  // Audio Player Toggle
+  const togglePlayAudio = () => {
+    if (!audioElementRef.current) return;
+    if (isPlayingAudio) {
+      audioElementRef.current.pause();
+      setIsPlayingAudio(false);
+    } else {
+      audioElementRef.current.play();
+      setIsPlayingAudio(true);
+    }
+  };
+
+  // Materials modifier
   const handleAddMaterialRow = () => {
     setMaterials([...materials, { name: '', price: 0 }]);
   };
@@ -143,40 +400,125 @@ export default function NewJob() {
     setMaterials(materials.filter((_, idx) => idx !== index));
   };
 
-  // Submit invoice generator
+  // Photo uploads
+  const handlePhotoUpload = (e, type) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (type === 'before') setBeforePhoto(reader.result);
+      if (type === 'after') setAfterPhoto(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Inject Item from Catalog
+  const handleAddFromCatalog = (item) => {
+    if (item.category === 'labor') {
+      setHourlyRate(item.defaultRate);
+      setJobTitle(prev => prev ? `${prev} & ${item.title}` : item.title);
+    } else if (item.category === 'service') {
+      setJobTitle(item.title);
+      setHourlyRate(item.defaultRate);
+      setGstRate(item.gstRate);
+    } else {
+      setMaterials([...materials, { name: item.title, price: item.defaultRate }]);
+    }
+    setShowCatalogDropdown(false);
+  };
+
+  // --- Signature Canvas Handling ---
+  const startDrawing = (e) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX || (e.touches && e.touches[0].clientX)) - rect.left;
+    const y = (e.clientY || (e.touches && e.touches[0].clientY)) - rect.top;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    setIsDrawing(true);
+  };
+
+  const draw = (e) => {
+    if (!isDrawing) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX || (e.touches && e.touches[0].clientX)) - rect.left;
+    const y = (e.clientY || (e.touches && e.touches[0].clientY)) - rect.top;
+    ctx.lineTo(x, y);
+    ctx.strokeStyle = '#0F172A';
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+    setHasSignature(true);
+  };
+
+  const stopDrawing = () => {
+    if (!isDrawing) return;
+    setIsDrawing(false);
+    if (canvasRef.current) {
+      setSignatureDataUrl(canvasRef.current.toDataURL('image/png'));
+    }
+  };
+
+  const clearSignature = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setHasSignature(false);
+    setSignatureDataUrl('');
+  };
+
+  // --- Submit Invoice Creation ---
   const handleCreateInvoice = async () => {
     try {
       setParsingLoading(true);
       const headers = { Authorization: `Bearer ${token}` };
       
-      // 1. Save Job details
       const jobPayload = {
+        documentType,
         clientName,
         clientPhone,
+        clientAddress,
+        clientGstin,
+        stateOfSupply,
         jobTitle,
         laborHours,
         hourlyRate,
         materials,
+        taxType,
         gstRate,
-        status: 'unpaid'
+        discountType,
+        discountValue,
+        pdfTheme,
+        notes,
+        paymentDueDate,
+        customerSignature: signatureDataUrl,
+        beforePhotoUrl: beforePhoto,
+        afterPhotoUrl: afterPhoto,
+        status: documentType === 'estimate' ? 'draft' : 'unpaid'
       };
 
       const jobResponse = await axios.post('/api/jobs', jobPayload, { headers });
       const job = jobResponse.data;
 
-      // 2. Generate PDF Invoice
       const invoiceResponse = await axios.post(`/api/invoices/generate/${job._id}`, {}, { headers });
       setGeneratedInvoice(invoiceResponse.data);
 
-      setStep(3); // success view
+      setStep(3); // Success Screen
     } catch (err) {
-      console.error('Failed to save job/invoice details:', err);
+      console.error('Failed to create invoice:', err);
+      alert(err.response?.data?.message || 'Failed to generate invoice');
     } finally {
       setParsingLoading(false);
     }
   };
 
-  // Send WhatsApp Trigger
+  // --- WhatsApp Trigger ---
   const handleWhatsAppSend = async () => {
     if (!generatedInvoice) return;
     setWhatsAppSending(true);
@@ -186,283 +528,459 @@ export default function NewJob() {
       await axios.post(`/api/invoices/send-whatsapp/${generatedInvoice._id}`, {}, { headers });
       setWhatsAppSuccess(true);
     } catch (err) {
-      console.error('WhatsApp failed:', err);
+      console.error('WhatsApp dispatch failed:', err);
     } finally {
       setWhatsAppSending(false);
     }
   };
 
-  // Format timer values
   const formatTimer = (totalSeconds) => {
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    const m = Math.floor(totalSeconds / 60);
+    const s = totalSeconds % 60;
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  return (
-    <div className="max-w-2xl mx-auto text-left flex flex-col gap-6">
-      
-      {/* STEPS HEADLINE */}
-      <div className="flex items-center justify-between border-b border-navy-border/40 pb-5">
-        <h1 className="text-xl font-display font-black text-text-primary">
-          {step === 1 && 'Record Voice Note'}
-          {step === 2 && 'AI review summary'}
-          {step === 3 && 'Invoice Generated!'}
-        </h1>
+  // Calculations with Discount Engine
+  const laborSubtotal = (Number(laborHours) || 0) * (Number(hourlyRate) || 0);
+  const materialsSubtotal = materials.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
+  const grossSubtotal = laborSubtotal + materialsSubtotal;
 
-        {/* Badge steps */}
-        <div className="flex items-center gap-1.5 text-[10px] font-bold font-mono">
-          <span className={`px-2.5 py-1 rounded-badge ${step >= 1 ? 'bg-primary text-white' : 'bg-navy-elevated text-text-secondary'}`}>
-            1. RECORD
-          </span>
-          <span className="text-text-secondary">➔</span>
-          <span className={`px-2.5 py-1 rounded-badge ${step >= 2 ? 'bg-primary text-white' : 'bg-navy-elevated text-text-secondary'}`}>
-            2. REVIEW
-          </span>
-          <span className="text-text-secondary">➔</span>
-          <span className={`px-2.5 py-1 rounded-badge ${step >= 3 ? 'bg-success text-white animate-pulse' : 'bg-navy-elevated text-text-secondary'}`}>
-            3. DONE
-          </span>
+  let calculatedDiscount = 0;
+  if (discountType === 'percentage') {
+    calculatedDiscount = (grossSubtotal * (Number(discountValue) || 0)) / 100;
+  } else if (discountType === 'fixed') {
+    calculatedDiscount = Number(discountValue) || 0;
+  }
+  calculatedDiscount = Math.min(grossSubtotal, Math.round(calculatedDiscount * 100) / 100);
+
+  const taxableSubtotal = Math.max(0, grossSubtotal - calculatedDiscount);
+  const calculatedGst = Math.round((taxableSubtotal * (gstRate / 100)) * 100) / 100;
+  const calculatedTotal = taxableSubtotal + calculatedGst;
+
+  return (
+    <div className="max-w-3xl mx-auto text-left flex flex-col gap-6">
+      
+      {/* 1. Stepper Header & Document Type Switcher */}
+      <div className="glass-panel p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg font-display font-black text-white">
+              {step === 1 && (documentType === 'estimate' ? '📝 Create Quotation / Estimate' : '🎙️ Voice to Tax Invoice')}
+              {step === 2 && '⚡ Review & Customize'}
+              {step === 3 && '🎉 Document Generated!'}
+            </h1>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded font-bold uppercase bg-primary/20 text-primary border border-primary/30">
+              {documentType}
+            </span>
+          </div>
+          <p className="text-[11px] text-text-secondary mt-0.5">
+            {step === 1 && 'Speak or tap a fast trade preset below.'}
+            {step === 2 && 'Inspect extracted items, discount, GST, and customer signature.'}
+            {step === 3 && 'Scannable UPI QR code & WhatsApp ready.'}
+          </p>
+        </div>
+
+        {/* Document Type Toggle Pills */}
+        <div className="flex items-center gap-1.5 bg-navy-surface p-1 rounded-xl border border-navy-border self-start sm:self-auto">
+          <button
+            type="button"
+            onClick={() => setDocumentType('invoice')}
+            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+              documentType === 'invoice' ? 'bg-primary text-white shadow-sm' : 'text-text-muted hover:text-white'
+            }`}
+          >
+            Tax Invoice (पक्का बिल)
+          </button>
+          <button
+            type="button"
+            onClick={() => setDocumentType('estimate')}
+            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+              documentType === 'estimate' ? 'bg-blue-600 text-white shadow-sm' : 'text-text-muted hover:text-white'
+            }`}
+          >
+            Estimate (कच्चा बिल)
+          </button>
         </div>
       </div>
 
       {/* ──────────────────────────────────────────────────────── */}
       {/* STEP 1: VOICE RECORDING SCREEN */}
       {step === 1 && (
-        <div className="bg-navy-card border border-navy-border/60 p-8 rounded-card text-center flex flex-col items-center gap-6 shadow-card-glow">
+        <div className="glass-panel p-6 sm:p-8 rounded-card text-center flex flex-col items-center gap-6 shadow-card-glow">
           
-          <div className="max-w-md mx-auto text-center flex flex-col gap-2">
-            <h2 className="text-base font-bold text-text-primary">Tap to Speak Service Summary</h2>
-            <p className="text-xs text-text-secondary leading-relaxed">
-              Describe what work you performed, who the customer was, their mobile number, hours billed, materials bought, and taxes.
-            </p>
+          {/* Language Selector */}
+          <div className="flex items-center justify-between w-full max-w-sm border-b border-navy-border/80 pb-3">
+            <span className="text-xs font-bold text-text-secondary">Language Recognition:</span>
+            <div className="flex gap-1 bg-navy-surface p-1 rounded-xl border border-navy-border">
+              {['Hinglish', 'Hindi', 'English'].map((lang) => (
+                <button
+                  key={lang}
+                  type="button"
+                  onClick={() => setLanguageMode(lang)}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                    languageMode === lang ? 'bg-primary text-white shadow-sm' : 'text-text-secondary hover:text-white'
+                  }`}
+                >
+                  {lang}
+                </button>
+              ))}
+            </div>
           </div>
 
-          {/* Huge Record Button */}
-          <div className="my-8 relative w-32 h-32 flex items-center justify-center">
+          {/* 1-Click Fast Trade Presets */}
+          <div className="w-full text-left">
+            <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider block mb-2">
+              ⚡ 1-Click Fast Trade Simulators:
+            </span>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {tradePresets.map((tp, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => handleApplyTradePreset(tp)}
+                  className="p-2.5 rounded-xl bg-navy-surface hover:bg-navy-border border border-navy-border text-left transition-all hover:border-primary/50 group cursor-pointer"
+                >
+                  <span className="text-lg block mb-1">{tp.icon}</span>
+                  <span className="text-xs font-bold text-white block group-hover:text-primary transition-colors">{tp.trade}</span>
+                  <span className="text-[10px] text-text-muted">Auto-fill ➔</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Live Transcript Display Box */}
+          {liveSpeechTranscript && (
+            <div className="w-full max-w-md bg-navy-surface border border-primary/40 rounded-xl p-3 text-xs text-left animate-fade-in">
+              <span className="text-[10px] text-primary uppercase font-bold flex items-center gap-1 mb-1">
+                <Sparkles className="w-3 h-3" /> Live Transcribing:
+              </span>
+              <p className="text-white italic">"{liveSpeechTranscript}"</p>
+            </div>
+          )}
+
+          {micPermissionError && (
+            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-400 flex items-center gap-2 max-w-md text-left">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span>{micPermissionError}</span>
+            </div>
+          )}
+
+          {/* Record Button with Gradient Equalizer Waveform */}
+          <div className="my-2 relative w-36 h-36 flex items-center justify-center">
             {isRecording && (
               <>
                 <div className="absolute inset-0 bg-primary/20 rounded-full animate-ping" />
-                <div className="absolute inset-4 bg-primary/30 rounded-full animate-pulse" />
+                <div className="absolute inset-3 bg-primary/30 rounded-full animate-pulse" />
               </>
             )}
             
             <button
+              type="button"
               onClick={isRecording ? handleStopRecording : handleStartRecording}
-              disabled={parsingLoading}
-              className={`w-24 h-24 rounded-full flex items-center justify-center text-white shadow-orange-glow border-4 border-navy-card hover:scale-105 active:scale-95 transition-all z-10 cursor-pointer ${
-                isRecording ? 'bg-danger hover:bg-danger/90' : 'bg-gradient-to-tr from-primary to-primary-hover'
+              className={`relative z-10 w-28 h-28 rounded-full flex flex-col items-center justify-center transition-all transform active:scale-95 cursor-pointer ${
+                isRecording 
+                  ? 'bg-danger text-white shadow-lg shadow-danger/50 animate-pulse' 
+                  : 'bg-gradient-to-tr from-primary to-amber-500 hover:from-primary-hover hover:to-amber-600 text-white shadow-orange-glow hover:scale-105'
               }`}
             >
-              {parsingLoading ? (
-                <Loader2 className="w-8 h-8 animate-spin text-white" />
-              ) : isRecording ? (
-                <div className="w-8 h-8 bg-white rounded-lg" />
+              {isRecording ? (
+                <>
+                  <Square className="w-9 h-9 fill-current mb-1" />
+                  <span className="text-[11px] font-extrabold uppercase tracking-wider">STOP</span>
+                </>
               ) : (
-                <Mic className="w-9 h-9" />
+                <>
+                  <Mic className="w-10 h-10 mb-1" />
+                  <span className="text-[11px] font-extrabold uppercase tracking-wider">SPEAK</span>
+                </>
               )}
             </button>
           </div>
 
-          {/* Recording Timer / Transcription placeholder */}
+          {/* Timer or Audio Processing Actions */}
           {isRecording ? (
             <div className="flex flex-col items-center gap-2">
-              <span className="text-2xl font-mono font-bold text-text-primary">
-                {formatTimer(recordingSeconds)}
-              </span>
-              <span className="text-xs text-danger font-semibold uppercase animate-pulse flex items-center gap-1">
-                🔴 RECORDING AUDIO
-              </span>
-              
-              {/* Voice Waves */}
-              <div className="flex items-center gap-1.5 h-7 mt-3">
-                {[...Array(12)].map((_, idx) => (
-                  <div
-                    key={idx}
-                    className="w-1 bg-primary rounded-full animate-wave"
-                    style={{
-                      height: `${10 + Math.random() * 20}px`,
-                      animationDelay: `${idx * 0.12}s`,
-                    }}
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-danger animate-ping" />
+                <span className="font-mono text-xl font-bold text-danger">
+                  {formatTimer(recordingSeconds)}
+                </span>
+                <span className="text-xs text-emerald-400 font-semibold">• AI Listening...</span>
+              </div>
+              <div className="flex items-center gap-1 h-6">
+                {[...Array(16)].map((_, i) => (
+                  <div 
+                    key={i} 
+                    className="w-1.5 rounded-full waveform-gradient animate-pulse" 
+                    style={{ 
+                      height: `${Math.max(8, Math.sin(i + recordingSeconds) * 24)}px`,
+                      animationDelay: `${i * 80}ms` 
+                    }} 
                   />
                 ))}
               </div>
             </div>
-          ) : parsingLoading ? (
-            <div className="flex flex-col items-center gap-3">
-              <span className="text-xs text-primary font-bold uppercase animate-pulse flex items-center gap-1.5">
-                <Sparkles className="w-4.5 h-4.5" /> AI Engine Extracting Details...
-              </span>
-              <p className="text-xs text-text-secondary">Whisper is transcribing voice and matching fields.</p>
-            </div>
-          ) : (
-            <div className="text-xs text-text-secondary flex flex-col gap-3">
-              <span>Prefer typing instead?</span>
+          ) : audioUrl ? (
+            <div className="flex flex-col items-center gap-3 w-full max-w-sm">
+              <audio 
+                ref={audioElementRef} 
+                src={audioUrl} 
+                onEnded={() => setIsPlayingAudio(false)} 
+                className="hidden" 
+              />
+
+              <div className="w-full bg-navy-surface border border-navy-border rounded-xl p-3 flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={togglePlayAudio}
+                  className="p-2 rounded-lg bg-primary text-white hover:bg-primary-hover transition-colors"
+                >
+                  {isPlayingAudio ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 fill-current" />}
+                </button>
+                <div className="text-left flex-1">
+                  <p className="text-xs font-bold text-white">Voice Note Captured</p>
+                  <p className="text-[10px] text-text-muted font-mono">{formatTimer(recordingSeconds)} duration</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleStartRecording}
+                  className="p-2 text-text-muted hover:text-white transition-colors text-xs flex items-center gap-1"
+                  title="Re-record"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" /> Re-record
+                </button>
+              </div>
+
               <button
-                onClick={() => setStep(2)}
-                className="text-primary font-bold hover:underline cursor-pointer"
+                type="button"
+                onClick={handleProcessRecording}
+                disabled={parsingLoading}
+                className="w-full py-3 bg-gradient-to-r from-primary to-amber-500 hover:from-primary-hover hover:to-amber-600 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 shadow-orange-glow transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
               >
-                Skip voice & fill manually ➔
+                {parsingLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    AI Analyzing Speech & Pricing...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4" />
+                    Generate {documentType === 'estimate' ? 'Estimate' : 'Invoice'} with AI ➔
+                  </>
+                )}
               </button>
             </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setTranscript('Manual Entry Form');
+                setStep(2);
+              }}
+              className="text-xs text-text-muted hover:text-primary transition-colors font-medium"
+            >
+              Skip Voice and Enter Details Manually ➔
+            </button>
           )}
         </div>
       )}
 
       {/* ──────────────────────────────────────────────────────── */}
-      {/* STEP 2: REVIEW SUMMARY FORM */}
+      {/* STEP 2: REVIEW & CUSTOMIZE INVOICE FORM */}
       {step === 2 && (
         <div className="flex flex-col gap-6">
-          {/* Transcript preview banner */}
-          {transcript && (
-            <div className="bg-navy-card/80 border border-navy-border/60 p-4.5 rounded-card">
-              <h3 className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-2 flex items-center gap-1">
-                <Sparkles className="w-3.5 h-3.5 text-primary" /> Audio Transcript Log
-              </h3>
-              <p className="text-xs text-text-secondary italic leading-relaxed font-mono">
-                "{transcript}"
-              </p>
+          
+          {/* Transcript Banner */}
+          {transcript && transcript !== 'Manual Entry Form' && (
+            <div className="glass-panel-active rounded-xl p-3.5 flex items-start gap-3 text-xs">
+              <Sparkles className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold text-primary block mb-0.5">Voice Transcript Summary</span>
+                <p className="text-text-secondary italic">"{transcript}"</p>
+              </div>
             </div>
           )}
 
-          {/* Editable Form */}
-          <div className="bg-navy-card border border-navy-border/60 p-6 rounded-card shadow-card-glow flex flex-col gap-5 text-left">
-            <h3 className="text-xs font-bold text-text-secondary uppercase tracking-widest border-b border-navy-border/40 pb-2">
-              Customer Details
-            </h3>
+          {/* Form Container */}
+          <div className="glass-panel p-6 rounded-card flex flex-col gap-5 shadow-card">
             
-            <div className="grid sm:grid-cols-2 gap-5">
-              {/* Client Name */}
-              <div className="floating-label-group">
-                <input
-                  type="text"
-                  id="clientName"
-                  value={clientName}
-                  onChange={(e) => setClientName(e.target.value)}
-                  placeholder=" "
-                  className="w-full bg-navy-elevated/40 border border-navy-border/80 focus:border-primary outline-none rounded-input px-3.5 py-2.5 text-sm transition-all"
-                />
-                <label htmlFor="clientName" className="flex items-center gap-1">
-                  <User className="w-3.5 h-3.5" /> Client Name
-                </label>
-                <span className="text-[9px] text-success font-semibold mt-1 block">✓ High Confidence</span>
-              </div>
+            {/* 1. Client Details Section */}
+            <div>
+              <h3 className="text-xs font-bold text-white uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5 text-primary" /> 1. Client & Billing Contact
+              </h3>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-text-secondary block mb-1">Customer Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={clientName}
+                    onChange={(e) => setClientName(e.target.value)}
+                    placeholder="e.g. Rahul Verma"
+                    className="w-full px-3 py-2 bg-navy-surface border border-navy-border rounded-xl text-xs text-white focus:outline-none focus:border-primary"
+                  />
+                </div>
 
-              {/* Client Phone */}
-              <div className="floating-label-group">
-                <input
-                  type="tel"
-                  id="clientPhone"
-                  value={clientPhone}
-                  onChange={(e) => setClientPhone(e.target.value)}
-                  placeholder=" "
-                  className="w-full bg-navy-elevated/40 border border-navy-border/80 focus:border-primary outline-none rounded-input px-3.5 py-2.5 text-sm transition-all"
-                />
-                <label htmlFor="clientPhone" className="flex items-center gap-1">
-                  <Phone className="w-3.5 h-3.5" /> Client Phone
-                </label>
-                <span className="text-[9px] text-success font-semibold mt-1 block">✓ High Confidence</span>
-              </div>
-            </div>
+                <div>
+                  <label className="text-xs font-bold text-text-secondary block mb-1">WhatsApp Mobile (10 Digits) *</label>
+                  <input
+                    type="tel"
+                    required
+                    value={clientPhone}
+                    onChange={(e) => setClientPhone(e.target.value)}
+                    placeholder="e.g. 9876543210"
+                    className="w-full px-3 py-2 bg-navy-surface border border-navy-border rounded-xl text-xs text-white focus:outline-none focus:border-primary font-mono"
+                  />
+                </div>
 
-            {/* Job Details */}
-            <h3 className="text-xs font-bold text-text-secondary uppercase tracking-widest border-b border-navy-border/40 pb-2 mt-2">
-              Line Items & Labor Billing
-            </h3>
+                <div>
+                  <label className="text-xs font-bold text-text-secondary block mb-1">Service Address / Location</label>
+                  <input
+                    type="text"
+                    value={clientAddress}
+                    onChange={(e) => setClientAddress(e.target.value)}
+                    placeholder="e.g. 23, Green Park, New Delhi"
+                    className="w-full px-3 py-2 bg-navy-surface border border-navy-border rounded-xl text-xs text-white focus:outline-none focus:border-primary"
+                  />
+                </div>
 
-            {/* Job Title */}
-            <div className="floating-label-group">
-              <input
-                type="text"
-                id="jobTitle"
-                value={jobTitle}
-                onChange={(e) => setJobTitle(e.target.value)}
-                placeholder=" "
-                className="w-full bg-navy-elevated/40 border border-navy-border/80 focus:border-primary outline-none rounded-input px-3.5 py-2.5 text-sm transition-all"
-              />
-              <label htmlFor="jobTitle" className="flex items-center gap-1">
-                <Wrench className="w-3.5 h-3.5" /> Service / Job Title
-              </label>
-              <span className="text-[9px] text-success font-semibold mt-1 block">✓ High Confidence</span>
-            </div>
-
-            {/* Hours stepper / Hourly rate */}
-            <div className="grid sm:grid-cols-2 gap-5 items-center">
-              {/* Hours Stepper */}
-              <div className="flex items-center justify-between border border-navy-border/80 bg-navy-elevated/20 rounded-input p-2 h-10.5">
-                <span className="text-xs text-text-secondary px-2">Labor Hours</span>
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setLaborHours(prev => Math.max(0, prev - 0.5))}
-                    className="w-7 h-7 bg-navy-elevated rounded-lg flex items-center justify-center hover:bg-navy-border font-bold active:scale-90 text-sm cursor-pointer"
-                  >
-                    -
-                  </button>
-                  <span className="text-sm font-mono font-bold w-6 text-center">{laborHours}</span>
-                  <button
-                    type="button"
-                    onClick={() => setLaborHours(prev => prev + 0.5)}
-                    className="w-7 h-7 bg-navy-elevated rounded-lg flex items-center justify-center hover:bg-navy-border font-bold active:scale-90 text-sm cursor-pointer"
-                  >
-                    +
-                  </button>
+                <div>
+                  <label className="text-xs font-bold text-text-secondary block mb-1">Client GSTIN (Optional B2B)</label>
+                  <input
+                    type="text"
+                    value={clientGstin}
+                    onChange={(e) => setClientGstin(e.target.value.toUpperCase())}
+                    placeholder="e.g. 07ABCDE1234F1Z5"
+                    className="w-full px-3 py-2 bg-navy-surface border border-navy-border rounded-xl text-xs text-white focus:outline-none focus:border-primary font-mono uppercase"
+                  />
                 </div>
               </div>
+            </div>
 
-              {/* Rate input */}
-              <div className="floating-label-group">
-                <input
-                  type="number"
-                  id="hourlyRate"
-                  value={hourlyRate}
-                  onChange={(e) => setHourlyRate(Number(e.target.value))}
-                  placeholder=" "
-                  className="w-full bg-navy-elevated/40 border border-navy-border/80 focus:border-primary outline-none rounded-input px-3.5 py-2.5 text-sm transition-all"
-                />
-                <label htmlFor="hourlyRate">Hourly Labor Rate (₹)</label>
+            {/* 2. Job Title & Labor Section */}
+            <div className="border-t border-navy-border/60 pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                  <Wrench className="w-3.5 h-3.5 text-primary" /> 2. Scope of Work & Labor
+                </h3>
+
+                {rateCards.length > 0 && (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setShowCatalogDropdown(!showCatalogDropdown)}
+                      className="text-[11px] font-bold text-primary bg-primary/10 hover:bg-primary/20 border border-primary/30 px-2.5 py-1 rounded-lg flex items-center gap-1 transition-colors"
+                    >
+                      <Package className="w-3 h-3" /> Quick Add from Catalog ▾
+                    </button>
+
+                    {showCatalogDropdown && (
+                      <div className="absolute right-0 top-full mt-1 w-64 bg-navy-card border border-navy-border rounded-xl shadow-xl z-20 max-h-56 overflow-y-auto p-1.5 flex flex-col gap-1">
+                        {rateCards.map(rc => (
+                          <button
+                            key={rc._id}
+                            type="button"
+                            onClick={() => handleAddFromCatalog(rc)}
+                            className="text-left px-2.5 py-1.5 rounded-lg hover:bg-navy-surface text-xs text-white flex items-center justify-between"
+                          >
+                            <span className="truncate pr-2 font-medium">{rc.title}</span>
+                            <span className="font-mono text-primary font-bold">₹{rc.defaultRate}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <div>
+                  <label className="text-xs font-bold text-text-secondary block mb-1">Work Description *</label>
+                  <input
+                    type="text"
+                    required
+                    value={jobTitle}
+                    onChange={(e) => setJobTitle(e.target.value)}
+                    placeholder="e.g. AC Servicing & Gas Top-up"
+                    className="w-full px-3 py-2 bg-navy-surface border border-navy-border rounded-xl text-xs text-white focus:outline-none focus:border-primary font-medium"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-bold text-text-secondary block mb-1">Labor Hours</label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      value={laborHours}
+                      onChange={(e) => setLaborHours(Number(e.target.value) || 0)}
+                      className="w-full px-3 py-2 bg-navy-surface border border-navy-border rounded-xl text-xs text-white focus:outline-none focus:border-primary font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-text-secondary block mb-1">Hourly Labor Rate (₹)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={hourlyRate}
+                      onChange={(e) => setHourlyRate(Number(e.target.value) || 0)}
+                      className="w-full px-3 py-2 bg-navy-surface border border-navy-border rounded-xl text-xs text-white focus:outline-none focus:border-primary font-mono"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Materials Grid */}
-            <div className="flex flex-col gap-3 mt-2">
-              <div className="flex justify-between items-center border-b border-navy-border/40 pb-2">
-                <span className="text-xs font-bold text-text-secondary uppercase tracking-widest">Materials Used</span>
+            {/* 3. Materials & Spare Parts */}
+            <div className="border-t border-navy-border/60 pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                  <Package className="w-3.5 h-3.5 text-primary" /> 3. Materials & Spare Parts
+                </h3>
                 <button
                   type="button"
                   onClick={handleAddMaterialRow}
-                  className="flex items-center gap-1 text-[10px] font-bold text-primary hover:underline cursor-pointer"
+                  className="text-[11px] font-bold text-primary hover:underline flex items-center gap-1"
                 >
-                  <PlusCircle className="w-3.5 h-3.5" /> Add Material
+                  <Plus className="w-3 h-3" /> Add Part
                 </button>
               </div>
 
               {materials.length === 0 ? (
-                <p className="text-xs text-text-secondary italic">No materials items added yet.</p>
+                <div className="text-xs text-text-muted py-2 bg-navy-surface/50 rounded-xl px-3 border border-dashed border-navy-border">
+                  No spare parts added. Tap "+ Add Part" to add parts.
+                </div>
               ) : (
-                <div className="flex flex-col gap-3">
-                  {materials.map((mat, index) => (
-                    <div key={index} className="flex gap-3 items-center">
+                <div className="flex flex-col gap-2">
+                  {materials.map((mat, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
                       <input
                         type="text"
-                        placeholder="Material name"
                         value={mat.name}
-                        onChange={(e) => handleUpdateMaterialRow(index, 'name', e.target.value)}
-                        className="flex-1 bg-navy-elevated/30 border border-navy-border/60 outline-none rounded-xl px-3 py-2 text-xs text-text-primary"
+                        onChange={(e) => handleUpdateMaterialRow(idx, 'name', e.target.value)}
+                        placeholder="e.g. Copper Pipe (1/4 inch)"
+                        className="flex-1 px-3 py-1.5 bg-navy-surface border border-navy-border rounded-lg text-xs text-white focus:outline-none focus:border-primary"
                       />
-                      <input
-                        type="number"
-                        placeholder="Price"
-                        value={mat.price || ''}
-                        onChange={(e) => handleUpdateMaterialRow(index, 'price', e.target.value)}
-                        className="w-24 bg-navy-elevated/30 border border-navy-border/60 outline-none rounded-xl px-3 py-2 text-xs font-mono text-text-primary"
-                      />
+                      <div className="w-28 relative">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-text-muted font-mono">₹</span>
+                        <input
+                          type="number"
+                          value={mat.price}
+                          onChange={(e) => handleUpdateMaterialRow(idx, 'price', e.target.value)}
+                          placeholder="Price"
+                          className="w-full pl-6 pr-2 py-1.5 bg-navy-surface border border-navy-border rounded-lg text-xs text-white focus:outline-none focus:border-primary font-mono"
+                        />
+                      </div>
                       <button
                         type="button"
-                        onClick={() => handleRemoveMaterialRow(index)}
-                        className="text-danger hover:text-danger/80 p-2 cursor-pointer"
+                        onClick={() => handleRemoveMaterialRow(idx)}
+                        className="p-1.5 text-text-muted hover:text-danger rounded-md transition-colors"
                       >
-                        <Trash2 className="w-4.5 h-4.5" />
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   ))}
@@ -470,79 +988,210 @@ export default function NewJob() {
               )}
             </div>
 
-            {/* Tax GST switches */}
-            <div className="flex flex-col gap-3 mt-2 border-t border-navy-border/40 pt-4">
-              <span className="text-xs font-bold text-text-secondary uppercase tracking-widest">GST Tax Bracket (%)</span>
-              <div className="flex gap-2">
-                {[0, 5, 12, 18, 28].map((rate) => (
-                  <button
-                    key={rate}
-                    type="button"
-                    onClick={() => setGstRate(rate)}
-                    className={`flex-1 py-2 rounded-xl text-xs font-bold font-mono transition-all border cursor-pointer ${
-                      gstRate === rate 
-                        ? 'bg-primary text-white border-primary shadow-orange-glow/10 scale-102' 
-                        : 'bg-navy-elevated/40 text-text-secondary border-navy-border/80 hover:text-text-primary hover:bg-navy-elevated'
-                    }`}
+            {/* 4. Tax Engine, Discount & Supply State */}
+            <div className="border-t border-navy-border/60 pt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="text-xs font-bold text-text-secondary block mb-1">Tax Jurisdiction</label>
+                <select
+                  value={taxType}
+                  onChange={(e) => setTaxType(e.target.value)}
+                  className="w-full px-3 py-2 bg-navy-surface border border-navy-border rounded-xl text-xs text-white focus:outline-none focus:border-primary"
+                >
+                  <option value="intra_state">Intra-State (CGST + SGST)</option>
+                  <option value="inter_state">Inter-State (IGST)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-text-secondary block mb-1">GST Tax Rate</label>
+                <select
+                  value={gstRate}
+                  onChange={(e) => setGstRate(Number(e.target.value))}
+                  className="w-full px-3 py-2 bg-navy-surface border border-navy-border rounded-xl text-xs text-white focus:outline-none focus:border-primary"
+                >
+                  <option value={0}>0% (Nil / Exempt)</option>
+                  <option value={5}>5% (Basic Goods)</option>
+                  <option value={12}>12% (Concessional)</option>
+                  <option value={18}>18% (Standard Rate)</option>
+                  <option value={28}>28% (Luxury / Heavy)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-text-secondary block mb-1">Discount Mode</label>
+                <div className="flex gap-2">
+                  <select
+                    value={discountType}
+                    onChange={(e) => setDiscountType(e.target.value)}
+                    className="w-28 px-2 py-2 bg-navy-surface border border-navy-border rounded-xl text-xs text-white focus:outline-none focus:border-primary"
                   >
-                    {rate}%
+                    <option value="none">None</option>
+                    <option value="percentage">% Percent</option>
+                    <option value="fixed">₹ Flat</option>
+                  </select>
+                  {discountType !== 'none' && (
+                    <input
+                      type="number"
+                      min="0"
+                      value={discountValue}
+                      onChange={(e) => setDiscountValue(Number(e.target.value) || 0)}
+                      placeholder="Disc"
+                      className="flex-1 px-2 py-2 bg-navy-surface border border-navy-border rounded-xl text-xs text-white focus:outline-none focus:border-primary font-mono"
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* 5. Before & After Photos Gallery */}
+            <div className="border-t border-navy-border/60 pt-4">
+              <h3 className="text-xs font-bold text-white uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <Camera className="w-3.5 h-3.5 text-primary" /> 5. Job Proof Photos (Before & After)
+              </h3>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Before Photo */}
+                <div className="border border-dashed border-navy-border rounded-xl p-3 bg-navy-surface/40 flex flex-col items-center justify-center text-center">
+                  {beforePhoto ? (
+                    <div className="relative w-full">
+                      <img src={beforePhoto} alt="Before" className="h-24 w-full object-cover rounded-lg" />
+                      <button
+                        type="button"
+                        onClick={() => setBeforePhoto(null)}
+                        className="absolute top-1 right-1 p-1 bg-black/70 text-white rounded-full text-[10px]"
+                      >
+                        ✕
+                      </button>
+                      <span className="text-[10px] font-bold text-text-secondary mt-1 block">Before Work Photo</span>
+                    </div>
+                  ) : (
+                    <label className="cursor-pointer flex flex-col items-center py-3">
+                      <ImageIcon className="w-6 h-6 text-text-muted mb-1" />
+                      <span className="text-xs font-semibold text-text-secondary">Upload "Before" Photo</span>
+                      <input type="file" accept="image/*" onChange={(e) => handlePhotoUpload(e, 'before')} className="hidden" />
+                    </label>
+                  )}
+                </div>
+
+                {/* After Photo */}
+                <div className="border border-dashed border-navy-border rounded-xl p-3 bg-navy-surface/40 flex flex-col items-center justify-center text-center">
+                  {afterPhoto ? (
+                    <div className="relative w-full">
+                      <img src={afterPhoto} alt="After" className="h-24 w-full object-cover rounded-lg" />
+                      <button
+                        type="button"
+                        onClick={() => setAfterPhoto(null)}
+                        className="absolute top-1 right-1 p-1 bg-black/70 text-white rounded-full text-[10px]"
+                      >
+                        ✕
+                      </button>
+                      <span className="text-[10px] font-bold text-emerald-400 mt-1 block">After Work (Finished) Photo</span>
+                    </div>
+                  ) : (
+                    <label className="cursor-pointer flex flex-col items-center py-3">
+                      <ImageIcon className="w-6 h-6 text-text-muted mb-1" />
+                      <span className="text-xs font-semibold text-text-secondary">Upload "After" Photo</span>
+                      <input type="file" accept="image/*" onChange={(e) => handlePhotoUpload(e, 'after')} className="hidden" />
+                    </label>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* 6. Customer Digital Signature Canvas */}
+            <div className="border-t border-navy-border/60 pt-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                  <PenTool className="w-3.5 h-3.5 text-primary" /> 6. Customer Work Acceptance Signature
+                </h3>
+                {hasSignature && (
+                  <button
+                    type="button"
+                    onClick={clearSignature}
+                    className="text-[11px] text-danger hover:underline font-semibold"
+                  >
+                    Clear Signature
                   </button>
-                ))}
+                )}
+              </div>
+
+              <div className="border border-navy-border rounded-xl p-2 bg-white relative">
+                <canvas
+                  ref={canvasRef}
+                  width={600}
+                  height={110}
+                  onMouseDown={startDrawing}
+                  onMouseMove={draw}
+                  onMouseUp={stopDrawing}
+                  onMouseLeave={stopDrawing}
+                  onTouchStart={startDrawing}
+                  onTouchMove={draw}
+                  onTouchEnd={stopDrawing}
+                  className="w-full h-[90px] cursor-crosshair touch-none"
+                />
+                {!hasSignature && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-slate-400 text-xs font-medium">
+                    Customer signs here with finger or stylus ✍️
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Total display summary */}
-            <div className="bg-navy-elevated/30 border border-navy-border/60 rounded-xl p-4.5 mt-2 flex flex-col gap-2 font-mono text-xs">
-              <div className="flex justify-between text-text-secondary">
-                <span>Labor Cost:</span>
-                <span>₹{(laborHours * hourlyRate).toFixed(2)}</span>
+            {/* Live Calculation Summary Banner */}
+            <div className="bg-navy-surface border border-navy-border rounded-xl p-4 flex flex-col gap-1.5">
+              <div className="flex justify-between text-xs text-text-secondary">
+                <span>Labor Cost ({laborHours} hrs @ ₹{hourlyRate}):</span>
+                <span className="font-mono text-white">₹{laborSubtotal.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-text-secondary">
-                <span>Materials Cost:</span>
-                <span>₹{materials.reduce((sum, m) => sum + m.price, 0).toFixed(2)}</span>
+              <div className="flex justify-between text-xs text-text-secondary">
+                <span>Materials Total:</span>
+                <span className="font-mono text-white">₹{materialsSubtotal.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-text-secondary">
-                <span>GST ({gstRate}%):</span>
+              {calculatedDiscount > 0 && (
+                <div className="flex justify-between text-xs text-emerald-400 font-semibold">
+                  <span>Discount ({discountType === 'percentage' ? `${discountValue}%` : 'Special'}):</span>
+                  <span className="font-mono">- ₹{calculatedDiscount.toFixed(2)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-xs text-text-secondary">
+                <span>Taxable Subtotal:</span>
+                <span className="font-mono text-white font-semibold">₹{taxableSubtotal.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-xs text-text-secondary">
                 <span>
-                  ₹{(
-                    ((laborHours * hourlyRate + materials.reduce((sum, m) => sum + m.price, 0)) * (gstRate / 100))
-                  ).toFixed(2)}
+                  {taxType === 'inter_state' ? `IGST (${gstRate}%):` : `CGST (${(gstRate/2).toFixed(1)}%) + SGST (${(gstRate/2).toFixed(1)}%):`}
                 </span>
+                <span className="font-mono text-white">₹{calculatedGst.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-text-primary font-bold border-t border-navy-border/60 pt-2 text-sm">
-                <span>Total Bill Amount:</span>
-                <span className="text-primary font-black">
-                  ₹{(
-                    (laborHours * hourlyRate + materials.reduce((sum, m) => sum + m.price, 0)) * (1 + gstRate / 100)
-                  ).toFixed(2)}
-                </span>
+              <div className="border-t border-navy-border pt-2 flex justify-between text-sm font-bold text-white">
+                <span className="text-primary">{documentType === 'estimate' ? 'Estimated Total:' : 'Total Amount Due:'}</span>
+                <span className="font-mono text-base text-primary">₹{calculatedTotal.toFixed(2)}</span>
               </div>
             </div>
 
-            {/* Cancel/Submit buttons */}
-            <div className="flex gap-4 mt-4">
+            {/* Submit Actions */}
+            <div className="flex items-center justify-between gap-3 pt-2">
               <button
                 type="button"
                 onClick={() => setStep(1)}
-                className="flex-1 bg-navy-elevated/40 hover:bg-navy-elevated text-text-secondary hover:text-text-primary font-bold py-3.5 px-6 rounded-button border border-navy-border/60 text-center transition-all cursor-pointer"
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-text-secondary hover:bg-navy-surface transition-colors"
               >
-                Back to Mic
+                ← Back to Recording
               </button>
+
               <button
                 type="button"
                 onClick={handleCreateInvoice}
                 disabled={parsingLoading || !clientName || !clientPhone || !jobTitle}
-                className="flex-2 bg-primary hover:bg-primary-hover disabled:bg-primary/50 text-white font-bold py-3.5 px-6 rounded-button shadow-orange-glow/15 hover:scale-102 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                className="px-6 py-3 bg-gradient-to-r from-primary to-amber-500 hover:from-primary-hover hover:to-amber-600 text-white rounded-xl text-sm font-bold flex items-center gap-2 shadow-orange-glow transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
               >
                 {parsingLoading ? (
                   <>
-                    <Loader2 className="w-4.5 h-4.5 animate-spin" />
-                    <span>Compiling Invoice...</span>
+                    <Loader2 className="w-4 h-4 animate-spin" /> Generating Document...
                   </>
                 ) : (
                   <>
-                    <FileText className="w-4.5 h-4.5" />
-                    <span>Generate Invoice</span>
+                    <FileText className="w-4 h-4" /> Generate {documentType === 'estimate' ? 'Estimate' : 'Invoice'} ➔
                   </>
                 )}
               </button>
@@ -553,79 +1202,87 @@ export default function NewJob() {
       )}
 
       {/* ──────────────────────────────────────────────────────── */}
-      {/* STEP 3: INVOICE GENERATED SUCCESS STATE */}
-      {step === 3 && (
-        <div className="bg-navy-card border border-navy-border/60 p-8 rounded-card text-center flex flex-col items-center gap-6 shadow-card-glow">
+      {/* STEP 3: SUCCESS SCREEN */}
+      {step === 3 && generatedInvoice && (
+        <div className="glass-panel p-8 rounded-card text-center flex flex-col items-center gap-6 shadow-card animate-fade-in">
           
-          {/* Drawing animated Checkmark */}
-          <div className="w-20 h-20 bg-success/10 border border-success/20 rounded-full flex items-center justify-center text-success relative">
-            <Check className="w-10 h-10 animate-draw-check" />
+          <div className="w-16 h-16 rounded-full bg-success/10 border border-success/30 text-success flex items-center justify-center">
+            <Check className="w-8 h-8" />
           </div>
 
-          <div className="max-w-md mx-auto text-center flex flex-col gap-2">
-            <h2 className="text-lg font-display font-black text-text-primary">Invoice Generated Successfully!</h2>
-            <p className="text-xs text-text-secondary leading-relaxed">
-              Invoice #{generatedInvoice?.invoiceNumber} is now saved. You can preview the document or deliver it directly to the customer.
-            </p>
+          <div>
+            <h2 className="text-xl font-bold text-white">
+              {documentType === 'estimate' ? 'Estimate Created Successfully!' : 'Tax Invoice Successfully Generated!'}
+            </h2>
+            <p className="text-xs text-text-secondary font-mono mt-1">Document ID: {generatedInvoice.invoiceNumber}</p>
           </div>
 
-          <div className="flex flex-col gap-3 w-full max-w-sm mt-4">
-            {/* Delivery Action */}
+          <div className="w-full max-w-sm bg-navy-surface border border-navy-border rounded-xl p-4 text-xs text-left flex flex-col gap-2">
+            <div className="flex justify-between">
+              <span className="text-text-muted">Customer:</span>
+              <span className="font-bold text-white">{clientName}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-text-muted">WhatsApp Mobile:</span>
+              <span className="font-mono text-white">+91 {clientPhone}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-text-muted">Total Bill:</span>
+              <span className="font-mono font-bold text-success text-sm">₹{calculatedTotal.toFixed(2)}</span>
+            </div>
+          </div>
+
+          {/* Quick Actions */}
+          <div className="flex flex-col gap-3 w-full max-w-sm">
             <button
               onClick={handleWhatsAppSend}
               disabled={whatsAppSending || whatsAppSuccess}
-              className={`w-full font-bold py-3.5 px-6 rounded-button transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                whatsAppSuccess 
-                  ? 'bg-success/20 text-success border border-success/30' 
-                  : 'bg-primary hover:bg-primary-hover text-white shadow-orange-glow/15 hover:scale-102 active:scale-98'
+              className={`w-full py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-md transition-all active:scale-95 ${
+                whatsAppSuccess
+                  ? 'bg-success text-white'
+                  : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/20'
               }`}
             >
               {whatsAppSending ? (
                 <>
-                  <Loader2 className="w-4.5 h-4.5 animate-spin" />
-                  <span>Delivering via WhatsApp...</span>
+                  <Loader2 className="w-4 h-4 animate-spin" /> Dispatching WhatsApp...
                 </>
               ) : whatsAppSuccess ? (
                 <>
-                  <Check className="w-4.5 h-4.5" />
-                  <span>Delivered to Customer!</span>
+                  <Check className="w-4 h-4" /> Sent on WhatsApp!
                 </>
               ) : (
                 <>
-                  <Send className="w-4.5 h-4.5" />
-                  <span>Send via WhatsApp</span>
+                  <Send className="w-4 h-4" /> Send on WhatsApp
                 </>
               )}
             </button>
 
-            {/* View PDF */}
-            <button
-              onClick={() => navigate(`/invoices/${generatedInvoice?._id}`)}
-              className="w-full bg-navy-elevated hover:bg-navy-border text-text-primary border border-navy-border/60 font-bold py-3 px-6 rounded-button text-center transition-all cursor-pointer"
-            >
-              Preview Invoice Details
-            </button>
-            
-            {/* New Job */}
-            <button
-              onClick={() => {
-                // Reset states
-                setStep(1);
-                setClientName('');
-                setClientPhone('');
-                setJobTitle('');
-                setLaborHours(1);
-                setHourlyRate(350);
-                setMaterials([]);
-                setGstRate(18);
-                setGeneratedInvoice(null);
-                setWhatsAppSuccess(false);
-              }}
-              className="text-xs font-bold text-text-secondary hover:text-text-primary py-2 mt-4 cursor-pointer"
-            >
-              ➔ Create Another Invoice
-            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <a
+                href={`/api/invoices/download/${generatedInvoice._id}`}
+                target="_blank"
+                rel="noreferrer"
+                className="py-2.5 bg-navy-surface hover:bg-navy-border border border-navy-border rounded-xl text-xs font-bold text-white flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <Download className="w-3.5 h-3.5" /> Download PDF
+              </a>
+
+              <Link
+                to={`/invoices/${generatedInvoice._id}`}
+                className="py-2.5 bg-primary hover:bg-primary-hover text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+              >
+                View Live Document ➔
+              </Link>
+            </div>
           </div>
+
+          <Link
+            to="/jobs"
+            className="text-xs text-text-muted hover:text-white mt-2"
+          >
+            ← Return to Invoices & Jobs List
+          </Link>
 
         </div>
       )}
