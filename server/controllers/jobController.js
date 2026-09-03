@@ -1,5 +1,6 @@
 import Job from '../models/Job.js';
 import Customer from '../models/Customer.js';
+import Staff from '../models/Staff.js';
 
 /**
  * Helper to upsert customer and recalculate CRM metrics
@@ -49,6 +50,11 @@ export const createJob = async (req, res) => {
       gstRate, 
       discountType,
       discountValue,
+      advancePaid,
+      assignedStaff,
+      isAmc,
+      amcFrequencyMonths,
+      amcNextDate,
       status,
       pdfTheme,
       customerSignature,
@@ -78,40 +84,66 @@ export const createJob = async (req, res) => {
       gstRate: gstRate !== undefined ? Number(gstRate) : 18,
       discountType: discountType || 'none',
       discountValue: discountValue !== undefined ? Number(discountValue) : 0,
-      status: status || (documentType === 'estimate' ? 'draft' : 'unpaid'),
+      advancePaid: advancePaid !== undefined ? Number(advancePaid) : 0,
+      assignedStaff: assignedStaff || null,
+      isAmc: isAmc || false,
+      amcFrequencyMonths: amcFrequencyMonths ? Number(amcFrequencyMonths) : 6,
+      amcNextDate: amcNextDate || null,
+      status: status || 'unpaid',
       pdfTheme: pdfTheme || 'modern',
       customerSignature: customerSignature || '',
       beforePhotoUrl: beforePhotoUrl || '',
       afterPhotoUrl: afterPhotoUrl || '',
       notes: notes || '',
-      paymentDueDate: paymentDueDate ? new Date(paymentDueDate) : undefined,
+      paymentDueDate: paymentDueDate || new Date(Date.now() + 7 * 86400000),
     });
 
     const savedJob = await job.save();
 
-    // Auto-sync customer directory
-    const addedSpend = savedJob.status === 'paid' ? savedJob.totalBill : 0;
-    await syncCustomerWithJob(req.user.id, clientName, clientPhone, clientAddress, addedSpend);
+    // Auto-sync into Customer Mini-CRM
+    await syncCustomerWithJob(
+      req.user.id, 
+      clientName, 
+      clientPhone, 
+      clientAddress, 
+      savedJob.totalBill
+    );
+
+    // Update staff total commission if assigned
+    if (assignedStaff && assignedStaff.staffId) {
+      try {
+        const staffMember = await Staff.findOne({ _id: assignedStaff.staffId, userId: req.user.id });
+        if (staffMember) {
+          staffMember.totalJobsDone += 1;
+          staffMember.totalCommissionEarned += (savedJob.assignedStaff.commissionAmount || 0);
+          staffMember.balancePending += (savedJob.assignedStaff.commissionAmount || 0);
+          await staffMember.save();
+        }
+      } catch (staffErr) {
+        console.warn('Staff commission sync note:', staffErr.message);
+      }
+    }
 
     res.status(201).json(savedJob);
   } catch (error) {
     console.error('Create Job Error:', error.message);
-    res.status(500).json({ message: 'Server failed to save job details' });
+    res.status(500).json({ message: 'Server error creating job record' });
   }
 };
 
 export const getJobs = async (req, res) => {
   try {
-    const { documentType } = req.query;
+    const { status, type, amc } = req.query;
     const filter = { userId: req.user.id };
-    if (documentType) {
-      filter.documentType = documentType;
-    }
+    if (status) filter.status = status;
+    if (type) filter.documentType = type;
+    if (amc === 'true') filter.isAmc = true;
+
     const jobs = await Job.find(filter).sort({ createdAt: -1 });
     res.json(jobs);
   } catch (error) {
     console.error('Get Jobs Error:', error.message);
-    res.status(500).json({ message: 'Server failed to retrieve jobs list' });
+    res.status(500).json({ message: 'Server error fetching jobs' });
   }
 };
 
@@ -119,12 +151,12 @@ export const getJobById = async (req, res) => {
   try {
     const job = await Job.findOne({ _id: req.params.id, userId: req.user.id });
     if (!job) {
-      return res.status(404).json({ message: 'Job not found or unauthorized' });
+      return res.status(404).json({ message: 'Job record not found' });
     }
     res.json(job);
   } catch (error) {
-    console.error('Get Job Detail Error:', error.message);
-    res.status(500).json({ message: 'Server failed to fetch job details' });
+    console.error('Get Job By ID Error:', error.message);
+    res.status(500).json({ message: 'Server error fetching job details' });
   }
 };
 
@@ -132,94 +164,69 @@ export const updateJob = async (req, res) => {
   try {
     const job = await Job.findOne({ _id: req.params.id, userId: req.user.id });
     if (!job) {
-      return res.status(404).json({ message: 'Job not found or unauthorized' });
+      return res.status(404).json({ message: 'Job record not found' });
     }
 
-    const prevStatus = job.status;
+    const fields = [
+      'documentType', 'clientName', 'clientPhone', 'clientAddress', 'clientGstin',
+      'stateOfSupply', 'jobTitle', 'laborHours', 'hourlyRate', 'materials',
+      'taxType', 'gstRate', 'discountType', 'discountValue', 'advancePaid',
+      'assignedStaff', 'isAmc', 'amcFrequencyMonths', 'amcNextDate',
+      'status', 'pdfTheme', 'customerSignature', 'beforePhotoUrl', 'afterPhotoUrl',
+      'notes', 'paymentDueDate'
+    ];
 
-    if (req.body.documentType) job.documentType = req.body.documentType;
-    job.clientName = req.body.clientName || job.clientName;
-    job.clientPhone = req.body.clientPhone || job.clientPhone;
-    job.clientAddress = req.body.clientAddress !== undefined ? req.body.clientAddress : job.clientAddress;
-    job.clientGstin = req.body.clientGstin !== undefined ? req.body.clientGstin : job.clientGstin;
-    job.stateOfSupply = req.body.stateOfSupply || job.stateOfSupply;
-    job.jobTitle = req.body.jobTitle || job.jobTitle;
-    job.laborHours = req.body.laborHours !== undefined ? Number(req.body.laborHours) : job.laborHours;
-    job.hourlyRate = req.body.hourlyRate !== undefined ? Number(req.body.hourlyRate) : job.hourlyRate;
-    job.taxType = req.body.taxType || job.taxType;
-    job.gstRate = req.body.gstRate !== undefined ? Number(req.body.gstRate) : job.gstRate;
-    job.discountType = req.body.discountType || job.discountType;
-    job.discountValue = req.body.discountValue !== undefined ? Number(req.body.discountValue) : job.discountValue;
-    job.status = req.body.status || job.status;
-    job.pdfTheme = req.body.pdfTheme || job.pdfTheme;
-    job.notes = req.body.notes !== undefined ? req.body.notes : job.notes;
-    
-    if (req.body.customerSignature) job.customerSignature = req.body.customerSignature;
-    if (req.body.beforePhotoUrl) job.beforePhotoUrl = req.body.beforePhotoUrl;
-    if (req.body.afterPhotoUrl) job.afterPhotoUrl = req.body.afterPhotoUrl;
-    if (req.body.paymentDueDate) job.paymentDueDate = new Date(req.body.paymentDueDate);
-
-    if (Array.isArray(req.body.materials)) {
-      job.materials = req.body.materials.map(m => ({ name: m.name, price: Number(m.price) }));
-    }
+    fields.forEach(field => {
+      if (req.body[field] !== undefined) {
+        job[field] = req.body[field];
+      }
+    });
 
     const updatedJob = await job.save();
-
-    // If transitioned to 'paid', update customer total spend
-    if (prevStatus !== 'paid' && updatedJob.status === 'paid') {
-      try {
-        const customer = await Customer.findOne({ userId: req.user.id, phone: updatedJob.clientPhone.trim() });
-        if (customer) {
-          customer.totalSpent = (customer.totalSpent || 0) + updatedJob.totalBill;
-          await customer.save();
-        }
-      } catch (cErr) {
-        console.warn('Customer spend sync warning:', cErr.message);
-      }
-    }
-
     res.json(updatedJob);
   } catch (error) {
     console.error('Update Job Error:', error.message);
-    res.status(500).json({ message: 'Server failed to update job details' });
+    res.status(500).json({ message: 'Server error updating job record' });
   }
 };
 
-/**
- * Convert Estimate / Quotation into a finalized Tax Invoice
- */
 export const convertEstimateToInvoice = async (req, res) => {
   try {
-    const estimate = await Job.findOne({ _id: req.params.id, userId: req.user.id });
-    if (!estimate) {
+    const job = await Job.findOne({ _id: req.params.id, userId: req.user.id });
+    if (!job) {
       return res.status(404).json({ message: 'Estimate not found or unauthorized' });
     }
 
-    estimate.documentType = 'invoice';
-    estimate.status = 'unpaid';
-    estimate.isConvertedFromEstimate = true;
-    estimate.estimateId = estimate._id.toString();
+    if (job.documentType !== 'estimate') {
+      return res.status(400).json({ message: 'This document is already a Tax Invoice' });
+    }
 
-    const savedInvoice = await estimate.save();
+    job.documentType = 'invoice';
+    job.isConvertedFromEstimate = true;
+    job.status = 'unpaid';
+    job.paymentDueDate = new Date(Date.now() + 7 * 86400000);
+    
+    const updatedJob = await job.save();
+
     res.json({
-      message: 'Estimate successfully converted to Tax Invoice',
-      job: savedInvoice
+      message: 'Successfully converted Estimate to formal Tax Invoice',
+      job: updatedJob
     });
   } catch (error) {
     console.error('Convert Estimate Error:', error.message);
-    res.status(500).json({ message: 'Server failed to convert estimate' });
+    res.status(500).json({ message: 'Server error converting estimate' });
   }
 };
 
 export const deleteJob = async (req, res) => {
   try {
-    const result = await Job.deleteOne({ _id: req.params.id, userId: req.user.id });
-    if (result.deletedCount === 0) {
-      return res.status(404).json({ message: 'Job not found or unauthorized' });
+    const job = await Job.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
+    if (!job) {
+      return res.status(404).json({ message: 'Job record not found' });
     }
-    res.json({ message: 'Job deleted successfully' });
+    res.json({ message: 'Job record deleted successfully' });
   } catch (error) {
     console.error('Delete Job Error:', error.message);
-    res.status(500).json({ message: 'Server failed to delete job' });
+    res.status(500).json({ message: 'Server error deleting job' });
   }
 };

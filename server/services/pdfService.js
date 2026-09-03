@@ -5,7 +5,7 @@ import path from 'path';
 
 /**
  * Compiles job details into an A4 PDF with real UPI QR code, customer signature,
- * photo proofs, multi-theme layouts (Modern, Classic Vyapar, Estimate), and warranty terms.
+ * photo proofs, multi-theme layouts (Modern, Classic Vyapar, Estimate), advance/balance splits, and AMC terms.
  */
 export const generateInvoicePDF = async (job, user, invoiceNumber) => {
   return new Promise(async (resolve, reject) => {
@@ -98,134 +98,131 @@ export const generateInvoicePDF = async (job, user, invoiceNumber) => {
         y += 3;
         doc.text('1. Labor / Technician Service Charges', 44, y);
         doc.text(`Rs. ${(job.hourlyRate || 0).toFixed(2)}`, 315, y);
-        doc.text(`${job.laborHours} hrs`, 410, y);
-        const laborTotal = (job.laborHours || 0) * (job.hourlyRate || 0);
-        doc.text(`Rs. ${laborTotal.toFixed(2)}`, 485, y);
-        y += 13;
+        doc.text(`${job.laborHours} hrs`, 415, y);
+        const laborTotal = (job.laborHours * job.hourlyRate).toFixed(2);
+        doc.text(`Rs. ${laborTotal}`, 485, y);
+        y += 14;
         doc.moveTo(36, y).lineTo(560, y).lineWidth(0.5).stroke(lineGray);
       }
 
       (job.materials || []).forEach((mat, idx) => {
         y += 3;
-        doc.text(`${idx + 2}. ${mat.name}`, 44, y);
+        doc.text(`${(job.laborHours > 0 ? idx + 2 : idx + 1)}. ${mat.name}`, 44, y);
         doc.text(`Rs. ${(mat.price || 0).toFixed(2)}`, 315, y);
-        doc.text('1', 410, y);
+        doc.text('1', 420, y);
         doc.text(`Rs. ${(mat.price || 0).toFixed(2)}`, 485, y);
-        y += 13;
+        y += 14;
         doc.moveTo(36, y).lineTo(560, y).lineWidth(0.5).stroke(lineGray);
       });
 
-      // 4. Totals, Discounts & GST Summary
-      y += 6;
-      doc.font('Helvetica').fontSize(8.5).fillColor(textGray);
-      doc.text('Subtotal:', 360, y);
-      doc.font('Helvetica-Bold').fillColor(darkColor).text(`Rs. ${(job.subtotal || 0).toFixed(2)}`, 485, y);
+      // 4. Totals, Discounts & Taxes Calculation Box
+      y += 8;
+      const totalBoxY = y;
+      const subtotalVal = (job.subtotal || 0).toFixed(2);
+      const discountVal = (job.discountAmount || 0).toFixed(2);
+      const taxableSubVal = (job.taxableSubtotal || job.subtotal || 0).toFixed(2);
+      const cgstVal = (job.cgstAmount || 0).toFixed(2);
+      const sgstVal = (job.sgstAmount || 0).toFixed(2);
+      const igstVal = (job.igstAmount || 0).toFixed(2);
+      const totalVal = (job.totalBill || 0).toFixed(2);
+      const advVal = (job.advancePaid || 0).toFixed(2);
+      const balVal = (job.balanceDue || 0).toFixed(2);
+
+      doc.rect(340, totalBoxY, 220, job.advancePaid > 0 ? 115 : 95).fill(cardBg);
+      doc.font('Helvetica').fontSize(8).fillColor(textGray);
+      
+      let ty = totalBoxY + 8;
+      doc.text('Gross Subtotal:', 350, ty);
+      doc.text(`Rs. ${subtotalVal}`, 475, ty);
 
       if (job.discountAmount > 0) {
-        y += 12;
-        doc.font('Helvetica').fillColor('#16A34A').text(`Discount (${job.discountType === 'percentage' ? `${job.discountValue}%` : 'Special'}):`, 360, y);
-        doc.font('Helvetica-Bold').fillColor('#16A34A').text(`- Rs. ${job.discountAmount.toFixed(2)}`, 485, y);
+        ty += 11;
+        doc.font('Helvetica-Bold').fillColor('#059669').text(`Discount (${job.discountType === 'percentage' ? `${job.discountValue}%` : 'Flat'}):`, 350, ty);
+        doc.text(`- Rs. ${discountVal}`, 475, ty);
+        doc.font('Helvetica').fillColor(textGray);
       }
 
       if (job.taxType === 'inter_state') {
-        y += 12;
-        doc.font('Helvetica').fillColor(textGray).text(`IGST (${job.gstRate}%):`, 360, y);
-        doc.font('Helvetica-Bold').fillColor(darkColor).text(`Rs. ${(job.igstAmount || job.gstAmount || 0).toFixed(2)}`, 485, y);
+        ty += 11;
+        doc.text(`IGST (${job.gstRate}%):`, 350, ty);
+        doc.text(`Rs. ${igstVal}`, 475, ty);
       } else {
-        const halfRate = (job.gstRate / 2).toFixed(1);
-        y += 12;
-        doc.font('Helvetica').fillColor(textGray).text(`CGST (${halfRate}%):`, 360, y);
-        doc.font('Helvetica-Bold').fillColor(darkColor).text(`Rs. ${(job.cgstAmount || (job.gstAmount / 2) || 0).toFixed(2)}`, 485, y);
-        y += 12;
-        doc.font('Helvetica').fillColor(textGray).text(`SGST (${halfRate}%):`, 360, y);
-        doc.font('Helvetica-Bold').fillColor(darkColor).text(`Rs. ${(job.sgstAmount || (job.gstAmount / 2) || 0).toFixed(2)}`, 485, y);
+        ty += 11;
+        doc.text(`CGST (${(job.gstRate / 2).toFixed(1)}%):`, 350, ty);
+        doc.text(`Rs. ${cgstVal}`, 475, ty);
+        ty += 11;
+        doc.text(`SGST (${(job.gstRate / 2).toFixed(1)}%):`, 350, ty);
+        doc.text(`Rs. ${sgstVal}`, 475, ty);
       }
 
-      y += 13;
-      doc.rect(350, y - 2, 210, 20).fill(isEstimate ? '#EFF6FF' : '#FFF7ED');
-      doc.font('Helvetica-Bold').fontSize(9.5).fillColor(primaryColor).text(isEstimate ? 'Total Estimated (INR):' : 'Total Amount Due:', 358, y + 3);
-      doc.text(`Rs. ${(job.totalBill || 0).toFixed(2)}`, 485, y + 3);
+      ty += 12;
+      doc.moveTo(350, ty).lineTo(550, ty).lineWidth(1).stroke(darkColor);
+      ty += 4;
+      doc.font('Helvetica-Bold').fontSize(9.5).fillColor(darkColor);
+      doc.text('Total Amount:', 350, ty);
+      doc.text(`Rs. ${totalVal}`, 470, ty);
 
-      // Watermark
-      if (job.status === 'paid') {
-        doc.save();
-        doc.opacity(0.12);
-        doc.fontSize(60).font('Helvetica-Bold').fillColor('#22C55E');
-        doc.rotate(-28, { origin: [300, 420] });
-        doc.text('PAID IN FULL', 160, 420);
-        doc.restore();
-      } else if (isEstimate) {
-        doc.save();
-        doc.opacity(0.08);
-        doc.fontSize(55).font('Helvetica-Bold').fillColor('#3B82F6');
-        doc.rotate(-28, { origin: [300, 420] });
-        doc.text('ESTIMATE ONLY', 140, 420);
-        doc.restore();
+      if (job.advancePaid > 0) {
+        ty += 13;
+        doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#059669').text('Advance Token Paid:', 350, ty);
+        doc.text(`- Rs. ${advVal}`, 470, ty);
+        ty += 11;
+        doc.font('Helvetica-Bold').fontSize(9).fillColor('#DC2626').text('Balance Due:', 350, ty);
+        doc.text(`Rs. ${balVal}`, 470, ty);
       }
 
-      // 5. Dynamic Scannable UPI QR Code & Payment Details
-      let bottomY = Math.max(y + 30, 360);
+      // 5. Dynamic Scannable UPI QR Code Bottom-Left
+      const upiId = user.upiId || 'sharmacool@upi';
+      const upiLink = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(user.businessName || user.name)}&am=${(job.balanceDue > 0 ? job.balanceDue : job.totalBill).toFixed(2)}&cu=INR&tn=${encodeURIComponent(`Invoice ${invoiceNumber}`)}`;
       
-      doc.rect(36, bottomY, 524, 100).fill(cardBg);
-      doc.font('Helvetica-Bold').fontSize(9).fillColor(darkColor).text(isEstimate ? 'ESTIMATE PAYMENT ESTIMATION' : 'PAYMENT DETAILS & SCAN TO PAY VIA UPI', 46, bottomY + 8);
+      const qrDataUrl = await QRCode.toDataURL(upiLink, { margin: 1, width: 95 });
+      const qrBuffer = Buffer.from(qrDataUrl.split(',')[1], 'base64');
       
-      if (user.upiId) {
-        doc.font('Helvetica').fontSize(8).fillColor(textGray);
-        doc.text(`UPI VPA: ${user.upiId}`, 46, bottomY + 24);
-        doc.text(`Account Holder: ${user.businessName || user.name}`, 46, bottomY + 36);
-        doc.text('Scan using Google Pay, PhonePe, Paytm, or BHIM.', 46, bottomY + 48);
-        doc.text(`Amount will auto-fill: Rs. ${(job.totalBill || 0).toFixed(2)}`, 46, bottomY + 60);
+      const qrBoxY = Math.max(totalBoxY, 340);
+      doc.rect(36, qrBoxY, 280, 105).fill('#FFFFFF').stroke(lineGray);
+      doc.image(qrBuffer, 44, qrBoxY + 6, { width: 92 });
+      
+      doc.font('Helvetica-Bold').fontSize(9).fillColor(primaryColor).text('SCAN & PAY VIA UPI', 145, qrBoxY + 12);
+      doc.font('Helvetica').fontSize(7.5).fillColor(textGray);
+      doc.text('Scan with Google Pay, PhonePe, Paytm, or BHIM', 145, qrBoxY + 25, { width: 160 });
+      doc.font('Helvetica-Bold').fontSize(8).fillColor(darkColor).text(`VPA: ${upiId}`, 145, qrBoxY + 52);
+      doc.font('Helvetica-Bold').fontSize(8.5).fillColor(primaryColor).text(`Payable: Rs. ${(job.balanceDue > 0 ? job.balanceDue : job.totalBill).toFixed(2)}`, 145, qrBoxY + 66);
+      doc.font('Helvetica').fontSize(6.5).fillColor('#16A34A').text('Instant Settlement Verified', 145, qrBoxY + 80);
 
-        const upiPayUri = `upi://pay?pa=${encodeURIComponent(user.upiId)}&pn=${encodeURIComponent(user.businessName || user.name)}&am=${(job.totalBill || 0).toFixed(2)}&cu=INR&tn=${encodeURIComponent(invoiceNumber)}`;
-        
-        try {
-          const qrBuffer = await QRCode.toBuffer(upiPayUri, {
-            errorCorrectionLevel: 'M',
-            margin: 1,
-            width: 80
-          });
-          doc.image(qrBuffer, 465, bottomY + 10, { width: 80, height: 80 });
-        } catch (qrErr) {
-          console.error('QR Code error:', qrErr.message);
-        }
+      // 6. AMC / Warranty Terms & Signature Box
+      const termsY = qrBoxY + 115;
+      doc.font('Helvetica-Bold').fontSize(8).fillColor(darkColor).text('Terms, Warranty & Service Conditions:', 36, termsY);
+      doc.font('Helvetica').fontSize(7).fillColor(textGray);
+      doc.text('1. 30-day workmanship warranty on all technical services rendered.', 36, termsY + 12);
+      doc.text('2. Replacement parts subject to original manufacturer warranty.', 36, termsY + 22);
+      if (job.isAmc && job.amcNextDate) {
+        doc.font('Helvetica-Bold').fillColor('#0284C7').text(`3. AMC Contract Active: Next maintenance due on ${new Date(job.amcNextDate).toLocaleDateString('en-IN')}`, 36, termsY + 32);
+      }
+
+      // Customer / Contractor Signature
+      if (job.customerSignature && job.customerSignature.startsWith('data:image')) {
+        const sigBuffer = Buffer.from(job.customerSignature.split(',')[1], 'base64');
+        doc.image(sigBuffer, 420, termsY + 5, { width: 90 });
+        doc.font('Helvetica').fontSize(6.5).fillColor(textGray).text('Customer Signature Verified', 415, termsY + 45);
       } else {
-        doc.font('Helvetica').fontSize(8).fillColor(textGray);
-        doc.text('No UPI VPA configured. Direct vendor settlement.', 46, bottomY + 25);
+        doc.font('Helvetica-Bold').fontSize(9).fillColor(primaryColor).text('TradeDesk Verified', 430, termsY + 20);
+        doc.font('Helvetica').fontSize(6.5).fillColor(textGray).text('Digitally Authenticated Document', 415, termsY + 34);
       }
 
-      // 6. Customer Signature & Proof Photos
-      let signY = bottomY + 110;
-
-      if (job.customerSignature) {
-        doc.rect(36, signY, 250, 70).fill(cardBg);
-        doc.font('Helvetica-Bold').fontSize(8).fillColor(darkColor).text('CUSTOMER ACCEPTANCE SIGNATURE', 44, signY + 6);
-        try {
-          if (job.customerSignature.startsWith('data:image')) {
-            const base64Data = job.customerSignature.replace(/^data:image\/\w+;base64,/, '');
-            const signBuffer = Buffer.from(base64Data, 'base64');
-            doc.image(signBuffer, 44, signY + 18, { width: 130, height: 35, fit: [130, 35] });
-          }
-        } catch (e) {
-          doc.font('Helvetica').fontSize(7.5).fillColor(textGray).text('[Verified Digital Signature]', 44, signY + 25);
-        }
-      }
-
-      // 7. Terms & Conditions Footer
-      const termsText = user.defaultTerms || '1. 30-day warranty on service repairs.\n2. Materials subject to manufacturer warranty.\n3. Please pay on or before due date.';
-      doc.rect(36, 735, 524, 40).fill('#F1F5F9');
-      doc.font('Helvetica-Bold').fontSize(7).fillColor(darkColor).text('TERMS & WARRANTY CONDITIONS', 42, 739);
-      doc.font('Helvetica').fontSize(6.5).fillColor(textGray).text(termsText, 42, 749, { width: 510, height: 22 });
-
-      // Page Footer
-      doc.font('Helvetica-Bold').fontSize(7).fillColor(primaryColor).text('TradeDesk AI — Field Operations Platform', 36, 786, { align: 'center' });
-      doc.font('Helvetica').fontSize(6).fillColor(textGray).text('GST Compliant Digital Billing System for Indian Contractors.', 36, 794, { align: 'center' });
+      // Footer
+      doc.font('Helvetica').fontSize(7).fillColor('#94A3B8').text(
+        'Generated via TradeDesk AI — The Operating System for Trade Contractors | "आपका काम हमारी पहचान"',
+        36,
+        780,
+        { align: 'center', width: 524 }
+      );
 
       doc.end();
 
       writeStream.on('finish', () => {
         resolve({
           filePath,
-          publicUrl: `/uploads/invoices/${fileName}`
+          publicUrl: `/uploads/invoices/${fileName}`,
         });
       });
 
@@ -233,8 +230,8 @@ export const generateInvoicePDF = async (job, user, invoiceNumber) => {
         reject(err);
       });
 
-    } catch (err) {
-      reject(err);
+    } catch (error) {
+      reject(error);
     }
   });
 };

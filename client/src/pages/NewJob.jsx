@@ -91,6 +91,12 @@ export default function NewJob() {
     return d.toISOString().split('T')[0];
   });
 
+  const [advancePaid, setAdvancePaid] = useState(0);
+  const [assignedStaff, setAssignedStaff] = useState(null);
+  const [staffList, setStaffList] = useState([]);
+  const [isAmc, setIsAmc] = useState(false);
+  const [amcFrequencyMonths, setAmcFrequencyMonths] = useState(6);
+
   // Digital Signature Canvas
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -207,7 +213,19 @@ export default function NewJob() {
         console.error('Failed to load rate cards in NewJob:', err);
       }
     };
+
+    const fetchStaff = async () => {
+      try {
+        const headers = { Authorization: `Bearer ${token}` };
+        const res = await axios.get('/api/staff', { headers });
+        setStaffList(res.data || []);
+      } catch (err) {
+        console.error('Failed to load staff:', err);
+      }
+    };
+
     fetchCatalog();
+    fetchStaff();
   }, [searchParams, token]);
 
   // Handle Recording Timer
@@ -494,6 +512,10 @@ export default function NewJob() {
         gstRate,
         discountType,
         discountValue,
+        advancePaid: Number(advancePaid) || 0,
+        assignedStaff,
+        isAmc,
+        amcFrequencyMonths: Number(amcFrequencyMonths) || 6,
         pdfTheme,
         notes,
         paymentDueDate,
@@ -1043,7 +1065,89 @@ export default function NewJob() {
               </div>
             </div>
 
-            {/* 5. Before & After Photos Gallery */}
+            {/* 5. Advance Token Deposit & Crew Dispatch */}
+            <div className="border-t border-navy-border/60 pt-4">
+              <h3 className="text-xs font-bold text-white uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <IndianRupee className="w-3.5 h-3.5 text-primary" /> 5. Advance Deposit, Crew & AMC
+              </h3>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* Advance Token Deposit */}
+                <div>
+                  <label className="text-xs font-bold text-text-secondary block mb-1">Advance Token Paid (₹)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={advancePaid}
+                    onChange={(e) => setAdvancePaid(Number(e.target.value) || 0)}
+                    placeholder="0"
+                    className="w-full px-3 py-2 bg-navy-surface border border-navy-border rounded-xl text-xs text-white focus:outline-none focus:border-primary font-mono"
+                  />
+                </div>
+
+                {/* Assign Crew / Karigar */}
+                <div>
+                  <label className="text-xs font-bold text-text-secondary block mb-1">Assign Technician / Karigar</label>
+                  <select
+                    value={assignedStaff?.staffId || ''}
+                    onChange={(e) => {
+                      const selId = e.target.value;
+                      if (!selId) {
+                        setAssignedStaff(null);
+                      } else {
+                        const found = staffList.find(s => s._id === selId);
+                        if (found) {
+                          setAssignedStaff({
+                            staffId: found._id,
+                            name: found.name,
+                            phone: found.phone,
+                            role: found.role,
+                            commissionPct: found.defaultCommissionPct
+                          });
+                        }
+                      }
+                    }}
+                    className="w-full px-3 py-2 bg-navy-surface border border-navy-border rounded-xl text-xs text-white focus:outline-none focus:border-primary"
+                  >
+                    <option value="">-- Unassigned (Self) --</option>
+                    {staffList.map(s => (
+                      <option key={s._id} value={s._id}>
+                        {s.name} ({s.role} - {s.defaultCommissionPct}%)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* AMC Contract */}
+                <div>
+                  <label className="text-xs font-bold text-text-secondary block mb-1">Periodic AMC Contract</label>
+                  <div className="flex items-center gap-2 pt-1">
+                    <label className="flex items-center gap-1.5 text-xs text-white cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={isAmc}
+                        onChange={(e) => setIsAmc(e.target.checked)}
+                        className="rounded"
+                      />
+                      <span>Recurring AMC</span>
+                    </label>
+                    {isAmc && (
+                      <select
+                        value={amcFrequencyMonths}
+                        onChange={(e) => setAmcFrequencyMonths(Number(e.target.value))}
+                        className="px-2 py-1 bg-navy-surface border border-navy-border rounded-lg text-xs text-white"
+                      >
+                        <option value={3}>Every 3 Mo</option>
+                        <option value={6}>Every 6 Mo</option>
+                        <option value={12}>Every 12 Mo</option>
+                      </select>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 6. Before & After Photos Gallery */}
             <div className="border-t border-navy-border/60 pt-4">
               <h3 className="text-xs font-bold text-white uppercase tracking-wider mb-2 flex items-center gap-1.5">
                 <Camera className="w-3.5 h-3.5 text-primary" /> 5. Job Proof Photos (Before & After)

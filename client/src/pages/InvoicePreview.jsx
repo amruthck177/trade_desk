@@ -24,8 +24,13 @@ import {
   ShieldCheck,
   RefreshCw,
   Image as ImageIcon,
-  AlertTriangle
+  AlertTriangle,
+  Volume2,
+  Printer,
+  Copy
 } from 'lucide-react';
+import { playSoundboxChime } from '../components/SoundboxAudio';
+import ThermalReceipt from '../components/ThermalReceipt';
 
 export default function InvoicePreview() {
   const { id } = useParams();
@@ -45,7 +50,10 @@ export default function InvoicePreview() {
   const [reminderSuccess, setReminderSuccess] = useState(false);
   const [selectedReminderTier, setSelectedReminderTier] = useState('tier1_polite');
   const [showReminderModal, setShowReminderModal] = useState(false);
+  const [showThermalModal, setShowThermalModal] = useState(false);
   const [converting, setConverting] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [simulatingPayment, setSimulatingPayment] = useState(false);
 
   useEffect(() => {
     const fetchInvoiceData = async () => {
@@ -77,9 +85,28 @@ export default function InvoicePreview() {
       await axios.put(`/api/jobs/${job._id}`, { status: nextStatus }, { headers });
       
       setStatusVal(nextStatus);
-      setJob(prev => ({ ...prev, status: nextStatus }));
+      setJob(prev => ({ ...prev, status: nextStatus, balanceDue: nextStatus === 'paid' ? 0 : (prev.totalBill - prev.advancePaid) }));
+      
+      if (nextStatus === 'paid') {
+        playSoundboxChime(job.balanceDue > 0 ? job.balanceDue : job.totalBill);
+      }
     } catch (err) {
       console.error('Failed to toggle status:', err);
+    }
+  };
+
+  const handleSimulatePaymentWebhook = async () => {
+    setSimulatingPayment(true);
+    try {
+      const headers = { Authorization: `Bearer ${token}` };
+      const res = await axios.post(`/api/invoices/simulate-payment/${invoice._id}`, {}, { headers });
+      setStatusVal('paid');
+      setJob(res.data.job);
+      playSoundboxChime(res.data.job.totalBill);
+    } catch (err) {
+      console.error('Simulate payment failed:', err);
+    } finally {
+      setSimulatingPayment(false);
     }
   };
 
@@ -89,7 +116,6 @@ export default function InvoicePreview() {
     try {
       const headers = { Authorization: `Bearer ${token}` };
       const res = await axios.post(`/api/jobs/${job._id}/convert`, {}, { headers });
-      // Re-generate PDF with INV prefix
       const genRes = await axios.post(`/api/invoices/generate/${job._id}`, {}, { headers });
       setJob(res.data.job);
       setInvoice(genRes.data);
@@ -112,6 +138,8 @@ export default function InvoicePreview() {
       setWhatsAppSuccess(true);
     } catch (err) {
       console.error('WhatsApp dispatch failed:', err);
+      const portalUrl = `${window.location.origin}/pay/${invoice.invoiceNumber}`;
+      window.open(`https://wa.me/91${job.clientPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Namaste ${job.clientName}, your invoice ${invoice.invoiceNumber} for ₹${job.totalBill.toFixed(2)} is ready: ${portalUrl}`)}`, '_blank');
     } finally {
       setWhatsAppSending(false);
     }
@@ -127,12 +155,18 @@ export default function InvoicePreview() {
       setTimeout(() => setShowReminderModal(false), 1200);
     } catch (err) {
       console.error('WhatsApp reminder dispatch failed:', err);
-      if (job?.clientPhone) {
-        window.open(`https://wa.me/91${job.clientPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Namaste ${job.clientName}, your invoice ${invoice?.invoiceNumber} for ₹${job.totalBill.toFixed(2)} is pending. Please pay using the link.`)}`, '_blank');
-      }
+      const portalUrl = `${window.location.origin}/pay/${invoice.invoiceNumber}`;
+      window.open(`https://wa.me/91${job?.clientPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Namaste ${job.clientName}, pending invoice reminder for ₹${job.balanceDue || job.totalBill}: ${portalUrl}`)}`, '_blank');
     } finally {
       setReminderSending(false);
     }
+  };
+
+  const handleCopyCustomerPortalLink = () => {
+    const portalUrl = `${window.location.origin}/pay/${invoice.invoiceNumber}`;
+    navigator.clipboard.writeText(portalUrl);
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2500);
   };
 
   const handleDownloadPDF = () => {
@@ -152,7 +186,8 @@ export default function InvoicePreview() {
   const laborCost = (Number(job?.laborHours) || 0) * (Number(job?.hourlyRate) || 0);
   const upiId = user?.upiId || 'sharmacool@upi';
   const businessTitle = user?.businessName || user?.name || 'TradeDesk Services';
-  const upiDeepLink = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(businessTitle)}&am=${(job?.totalBill || 0).toFixed(2)}&cu=INR&tn=${encodeURIComponent(`${isEstimate ? 'Estimate' : 'Invoice'} ${invoice?.invoiceNumber || ''}`)}`;
+  const payableAmount = job?.balanceDue > 0 ? job.balanceDue : (job?.totalBill || 0);
+  const upiDeepLink = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(businessTitle)}&am=${payableAmount.toFixed(2)}&cu=INR&tn=${encodeURIComponent(`${isEstimate ? 'Estimate' : 'Invoice'} ${invoice?.invoiceNumber || ''}`)}`;
   const upiQrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(upiDeepLink)}`;
 
   return (
@@ -181,13 +216,43 @@ export default function InvoicePreview() {
               </span>
             </h1>
             <p className="text-[11px] text-text-secondary">
-              Client: <span className="font-semibold text-white">{job?.clientName}</span> • Phone: <span className="font-mono">{job?.clientPhone}</span>
+              Client: <span className="font-semibold text-white">{job?.clientName}</span> • Phone: <span className="font-mono text-white">{job?.clientPhone}</span>
             </p>
           </div>
         </div>
 
         {/* Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2">
+          
+          {/* Public Customer Portal Link */}
+          <button
+            onClick={handleCopyCustomerPortalLink}
+            className="px-3 py-2 bg-navy-surface hover:bg-navy-border border border-navy-border text-xs font-bold text-white rounded-xl flex items-center gap-1.5 transition-all"
+            title="Copy Public Link with Before/After Slider & Warranty"
+          >
+            {linkCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+            <span>{linkCopied ? 'Portal Link Copied!' : 'Customer Portal Link'}</span>
+          </button>
+
+          {/* Soundbox Voice Trigger */}
+          <button
+            onClick={() => playSoundboxChime(job.totalBill)}
+            className="px-3 py-2 bg-teal-500/15 hover:bg-teal-500/25 border border-teal-500/40 text-teal-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all"
+            title="Play Audio Soundbox Speech Chime"
+          >
+            <Volume2 className="w-3.5 h-3.5" />
+            <span>Soundbox</span>
+          </button>
+
+          {/* 58mm Thermal Print Trigger */}
+          <button
+            onClick={() => setShowThermalModal(true)}
+            className="px-3 py-2 bg-navy-surface hover:bg-navy-border border border-navy-border text-xs font-bold text-white rounded-xl flex items-center gap-1.5 transition-all"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            <span>Thermal Slip</span>
+          </button>
+
           {isEstimate ? (
             <button
               onClick={handleConvertToInvoice}
@@ -213,7 +278,7 @@ export default function InvoicePreview() {
           {!isEstimate && statusVal !== 'paid' && (
             <button
               onClick={() => setShowReminderModal(true)}
-              className="px-3.5 py-2 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-400 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all"
+              className="px-3 py-2 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-400 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all"
             >
               <BellRing className="w-3.5 h-3.5" />
               <span>Send Reminder</span>
@@ -237,9 +302,9 @@ export default function InvoicePreview() {
 
           <button
             onClick={handleDownloadPDF}
-            className="px-3.5 py-2 bg-navy-surface hover:bg-navy-border border border-navy-border text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all"
+            className="px-3 py-2 bg-navy-surface hover:bg-navy-border border border-navy-border text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all"
           >
-            <Download className="w-3.5 h-3.5" /> Download PDF
+            <Download className="w-3.5 h-3.5" /> PDF
           </button>
         </div>
       </div>
@@ -304,6 +369,16 @@ export default function InvoicePreview() {
             <div>
               <span className="font-bold uppercase tracking-wider text-slate-400 text-[10px] block mb-0.5">Scope of Work</span>
               <p className="text-sm font-bold text-slate-900">{job?.jobTitle}</p>
+              {job?.assignedStaff?.name && (
+                <p className="text-[11px] text-cyan-700 font-semibold mt-0.5">
+                  👷 Assigned: {job.assignedStaff.name} ({job.assignedStaff.role})
+                </p>
+              )}
+              {job?.isAmc && (
+                <p className="text-[11px] text-emerald-700 font-semibold mt-0.5">
+                  🔁 Recurring AMC: Every {job.amcFrequencyMonths || 6} Months
+                </p>
+              )}
               {job?.notes && <p className="text-slate-500 mt-0.5 italic">"{job.notes}"</p>}
             </div>
           </div>
@@ -343,7 +418,7 @@ export default function InvoicePreview() {
             </table>
           </div>
 
-          {/* Totals, Discounts & GST */}
+          {/* Totals, Discounts & Advance Token Calculation */}
           <div className="flex justify-end pt-3 border-t border-slate-200">
             <div className="w-full max-w-xs space-y-1.5 text-xs">
               <div className="flex justify-between text-slate-600">
@@ -380,6 +455,19 @@ export default function InvoicePreview() {
                 <span>{isEstimate ? 'Total Estimated:' : 'Total Amount:'}</span>
                 <span className="font-mono text-base text-primary">₹{(job?.totalBill || 0).toFixed(2)}</span>
               </div>
+
+              {job?.advancePaid > 0 && (
+                <>
+                  <div className="flex justify-between text-emerald-600 font-semibold pt-1">
+                    <span>Advance Token Paid:</span>
+                    <span className="font-mono">- ₹{job.advancePaid.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm font-black text-rose-600 border-t border-slate-200 pt-1">
+                    <span>Balance Due:</span>
+                    <span className="font-mono text-base">₹{(job?.balanceDue || 0).toFixed(2)}</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -454,7 +542,7 @@ export default function InvoicePreview() {
             <div className="space-y-1">
               <span className="text-[10px] text-text-muted uppercase font-mono block">Payee UPI VPA</span>
               <p className="text-xs font-mono font-bold text-white">{upiId}</p>
-              <p className="text-xs font-bold text-primary font-mono mt-1">Amount: ₹{(job?.totalBill || 0).toFixed(2)}</p>
+              <p className="text-xs font-bold text-primary font-mono mt-1">Amount: ₹{payableAmount.toFixed(2)}</p>
             </div>
 
             {/* UPI App Icons Badge */}
@@ -469,6 +557,18 @@ export default function InvoicePreview() {
             >
               <Smartphone className="w-4 h-4" /> Open in UPI App
             </a>
+
+            {/* Simulate Instant Payment Webhook */}
+            {statusVal !== 'paid' && (
+              <button
+                onClick={handleSimulatePaymentWebhook}
+                disabled={simulatingPayment}
+                className="w-full py-2 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-400 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all"
+              >
+                {simulatingPayment ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                <span>⚡ Simulate UPI Scan & Pay</span>
+              </button>
+            )}
 
             <div className="flex items-center justify-center gap-2 text-[10px] text-text-muted">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
@@ -545,6 +645,16 @@ export default function InvoicePreview() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 4. Thermal Slip Modal */}
+      {showThermalModal && (
+        <ThermalReceipt
+          job={job}
+          user={user}
+          invoice={invoice}
+          onClose={() => setShowThermalModal(false)}
+        />
       )}
 
     </div>

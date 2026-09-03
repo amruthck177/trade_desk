@@ -5,6 +5,10 @@ import morgan from 'morgan';
 import dotenv from 'dotenv';
 import path from 'path';
 
+// Import Middleware
+import { protect } from './middleware/authMiddleware.js';
+export { protect };
+
 // Import Routes
 import authRoutes from './routes/authRoutes.js';
 import voiceRoutes from './routes/voiceRoutes.js';
@@ -13,6 +17,8 @@ import invoiceRoutes from './routes/invoiceRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
 import customerRoutes from './routes/customerRoutes.js';
 import rateCardRoutes from './routes/rateCardRoutes.js';
+import khataRoutes from './routes/khataRoutes.js';
+import staffRoutes from './routes/staffRoutes.js';
 
 dotenv.config();
 
@@ -28,7 +34,7 @@ app.use(cors({
 }));
 app.use(morgan('dev'));
 
-// Serve static compiled invoice PDFs and uploaded logos
+// Serve static compiled invoice PDFs and uploaded media
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 // Routes mapping
@@ -39,6 +45,8 @@ app.use('/api/invoices', invoiceRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/rate-cards', rateCardRoutes);
+app.use('/api/khata', khataRoutes);
+app.use('/api/staff', staffRoutes);
 
 // Health check endpoint
 app.get('/', (req, res) => {

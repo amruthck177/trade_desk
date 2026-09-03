@@ -16,6 +16,10 @@ import JobList from './pages/JobList';
 import Customers from './pages/Customers';
 import RateCards from './pages/RateCards';
 import Settings from './pages/Settings';
+import KhataLedger from './pages/KhataLedger';
+import StaffManager from './pages/StaffManager';
+import AmcTracker from './pages/AmcTracker';
+import CustomerPortal from './pages/CustomerPortal';
 
 // Protect Route wrapper
 const ProtectedRoute = ({ children }) => {
@@ -34,6 +38,7 @@ export default function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/pay/:invoiceNumber" element={<CustomerPortal />} />
 
         {/* Private App workspace routes */}
         <Route
@@ -62,6 +67,36 @@ export default function App() {
             <ProtectedRoute>
               <Layout>
                 <JobList />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/khata"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <KhataLedger />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/team"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <StaffManager />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/amc"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <AmcTracker />
               </Layout>
             </ProtectedRoute>
           }
